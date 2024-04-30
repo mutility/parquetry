@@ -8,6 +8,16 @@ exec parquetry cat alphav.parquet
 ! stderr .
 cmp stdout alphav.want
 
+# alphav --head 3 should be shorter
+exec parquetry cat --head 3 alphav.parquet
+! stderr .
+cmp stdout alphav-head3.want
+
+# alphav --tail 3 should be shorter
+exec parquetry cat --tail 3 alphav.parquet
+! stderr .
+cmp stdout alphav-tail3.want
+
 # alphaw should be wide
 exec parquetry cat alphaw.parquet
 ! stderr .
@@ -33,6 +43,14 @@ cmp stdout times.want
 {A:b}
 {A:c}
 {A:d}
+{A:e}
+{A:f}
+{A:g}
+-- alphav-head3.want --
+{A:a}
+{A:b}
+{A:c}
+-- alphav-tail3.want --
 {A:e}
 {A:f}
 {A:g}

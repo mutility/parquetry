@@ -59,6 +59,9 @@ USAGE:
    parquetry cat [command options] [arguments...]
 
 OPTIONS:
+   --csv         output CSV (default: false)
+   --json        output JSON (default: false)
+   --jsonl       output JSON-Lines (default: false)
    --head value  output only first N rows; skip if negative (default: 0)
    --tail value  output only last N rows; skip if negative (default: 0)
    --help, -h    show help
