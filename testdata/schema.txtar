@@ -1,0 +1,74 @@
+# missing files should be reported and fail
+! exec parquetry schema missing.parquet
+stderr 'missing.parquet: no such file or directory'
+! stdout .
+
+# alphav should be vertical
+exec parquetry schema alphav.parquet
+! stderr .
+cmp stdout alphav.want
+
+# alphaw should be wide
+exec parquetry schema alphaw.parquet
+! stderr .
+cmp stdout alphaw.want
+
+# alphamapv should be vertical
+exec parquetry schema alphamapv.parquet
+! stderr .
+cmp stdout alphamapv.want
+
+# alphamapw should be wide
+exec parquetry schema alphamapw.parquet
+! stderr .
+cmp stdout alphamapw.want
+
+# times should leverage most time storages; currently does not (writing-time bugs?)
+exec parquetry schema times.parquet
+! stderr .
+cmp stdout times.want
+
+-- alphav.want --
+message {
+	required binary A (STRING);
+}
+-- alphaw.want --
+message {
+	required binary A (STRING);
+	required binary B (STRING);
+	required binary C (STRING);
+	required binary D (STRING);
+	required binary E (STRING);
+	required binary F (STRING);
+	required binary G (STRING);
+}
+-- alphamapv.want --
+message {
+	required group M (MAP) {
+		repeated group key_value {
+			required binary key (STRING);
+			required binary value (STRING);
+		}
+	}
+}
+-- alphamapw.want --
+message {
+	required group M (MAP) {
+		repeated group key_value {
+			required binary key (STRING);
+			required binary value (STRING);
+		}
+	}
+}
+-- times.want --
+message {
+	required int32 Date (DATE);
+	required int64 Stamp (TIMESTAMP(isAdjustedToUTC=true,unit=MILLIS));
+	required int64 Sms (TIMESTAMP(isAdjustedToUTC=true,unit=MILLIS));
+	required int64 Sus (INT(64,true));
+	required int64 Sns (INT(64,true));
+	required int64 Time (TIMESTAMP(isAdjustedToUTC=true,unit=MILLIS));
+	required int64 Tms (TIMESTAMP(isAdjustedToUTC=true,unit=MILLIS));
+	required int64 Tus (TIMESTAMP(isAdjustedToUTC=true,unit=NANOS));
+	required int64 Tns (TIMESTAMP(isAdjustedToUTC=true,unit=NANOS));
+}

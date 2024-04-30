@@ -1,0 +1,91 @@
+# --help outputs trailing whitespace. Remove with sed before comparing.
+
+# help for --help
+exec parquetry --help
+! stderr .
+stdin stdout
+exec sed -E 's/[[:space:]]+$//'
+cmp stdout help
+
+# help for -h
+exec parquetry -h
+! stderr .
+stdin stdout
+exec sed -E 's/[[:space:]]+$//'
+cmp stdout help
+
+# help for cat
+exec parquetry cat --help
+! stderr .
+stdin stdout
+exec sed -E 's/[[:space:]]+$//'
+cmp stdout help.cat
+
+# help for to
+exec parquetry to --help
+! stderr .
+stdin stdout
+exec sed -E 's/[[:space:]]+$//'
+cmp stdout help.to
+
+# help for to csv
+exec parquetry to csv --help
+! stderr .
+stdin stdout
+exec sed -E 's/[[:space:]]+$//'
+cmp stdout help.to.csv
+
+-- help --
+NAME:
+   parquetry - Tooling for parquet files
+
+USAGE:
+   parquetry [global options] command [command options]
+
+COMMANDS:
+   cat
+   schema
+   to
+   help, h  Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --help, -h  show help
+-- help.cat --
+NAME:
+   parquetry cat
+
+USAGE:
+   parquetry cat [command options] [arguments...]
+
+OPTIONS:
+   --head value  output only first N rows; skip if negative (default: 0)
+   --tail value  output only last N rows; skip if negative (default: 0)
+   --help, -h    show help
+-- help.to --
+NAME:
+   parquetry to
+
+USAGE:
+   parquetry to command [command options]
+
+COMMANDS:
+   csv
+   json
+   jsonl
+   help, h  Shows a list of commands or help for one command
+
+OPTIONS:
+   --head value  output only first N rows; skip if negative (default: 0)
+   --tail value  output only last N rows; skip if negative (default: 0)
+   --help, -h    show help
+-- help.to.csv --
+NAME:
+   parquetry to csv
+
+USAGE:
+   parquetry to csv [command options] [arguments...]
+
+OPTIONS:
+   --head value  output only first N rows; skip if negative (default: 0)
+   --tail value  output only last N rows; skip if negative (default: 0)
+   --help, -h    show help

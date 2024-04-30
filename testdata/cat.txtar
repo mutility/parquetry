@@ -1,0 +1,41 @@
+# missing files should be reported and fail
+! exec parquetry cat missing.parquet
+stderr 'missing.parquet: no such file or directory'
+! stdout .
+
+# alphav should be vertical
+exec parquetry cat alphav.parquet
+! stderr .
+cmp stdout alphav.want
+
+# alphaw should be wide
+exec parquetry cat alphaw.parquet
+! stderr .
+cmp stdout alphaw.want
+
+# alphamapv should be vertical
+exec parquetry cat alphamapv.parquet
+! stderr .
+cmp stdout alphamapv.want
+
+# alphamapw should be wide
+exec parquetry cat alphamapw.parquet
+! stderr .
+cmp stdout alphamapw.want
+
+-- alphav.want --
+{A:a}
+{A:b}
+{A:c}
+{A:d}
+{A:e}
+{A:f}
+{A:g}
+-- alphaw.want --
+{A:a B:b C:c D:d E:e F:f G:g}
+-- alphamapv.want --
+{M:map[A:a]}
+{M:map[B:b]}
+{M:map[C:c]}
+-- alphamapw.want --
+{M:map[A:a B:b C:c]}

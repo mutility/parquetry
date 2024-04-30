@@ -1,0 +1,58 @@
+# missing files should be reported and fail
+! exec parquetry to json missing.parquet
+stderr 'missing.parquet: no such file or directory'
+! stdout .
+
+# alphav should be vertical
+exec parquetry to json alphav.parquet
+! stderr .
+cmp stdout alphav.json
+
+# alphaw should be wide
+exec parquetry to json alphaw.parquet
+! stderr .
+cmp stdout alphaw.json
+
+# alphamapv should be vertical
+exec parquetry to json alphamapv.parquet
+! stderr .
+cmp stdout alphamapv.json
+
+# alphamapw should be wide
+exec parquetry to json alphamapw.parquet
+! stderr .
+cmp stdout alphamapw.json
+
+# times should reflect precision. Sus/Sns aren't marked as times.
+exec parquetry to json times.parquet
+! stderr .
+cmp stdout times.json
+
+-- alphav.json --
+[
+  {"A":"a"},
+  {"A":"b"},
+  {"A":"c"},
+  {"A":"d"},
+  {"A":"e"},
+  {"A":"f"},
+  {"A":"g"}
+]
+-- alphaw.json --
+[
+  {"A":"a","B":"b","C":"c","D":"d","E":"e","F":"f","G":"g"}
+]
+-- alphamapv.json --
+[
+  {"M":{"A":"a"}},
+  {"M":{"B":"b"}},
+  {"M":{"C":"c"}}
+]
+-- alphamapw.json --
+[
+  {"M":{"A":"a","B":"b","C":"c"}}
+]
+-- times.json --
+[
+  {"Date":"2024-12-18","Stamp":"2024-12-18T09:23:19.123Z","Sms":"2024-12-18T09:23:19.123Z","Sus":1734513799123456,"Sns":1734513799123456789,"Time":"2024-12-18T09:23:19.123Z","Tms":"2024-12-18T09:23:19.123Z","Tus":"2024-12-18T09:23:19.123456789Z","Tns":"2024-12-18T09:23:19.123456789Z"}
+]

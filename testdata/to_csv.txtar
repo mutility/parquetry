@@ -1,0 +1,53 @@
+# missing files should be reported and fail
+! exec parquetry to csv missing.parquet
+stderr 'missing.parquet: no such file or directory'
+! stdout .
+
+# alphav should be vertical
+exec parquetry to csv alphav.parquet
+! stderr .
+cmp stdout alphav.csv
+
+# alphaw should be wide
+exec parquetry to csv alphaw.parquet
+! stderr .
+cmp stdout alphaw.csv
+
+# alphamapv should be vertical
+exec parquetry to csv alphamapv.parquet
+! stderr .
+cmp stdout alphamapv.csv
+
+# alphamapw should be wide
+exec parquetry to csv alphamapw.parquet
+! stderr .
+cmp stdout alphamapw.csv
+
+# times should reflect precision. Sus/Sns aren't marked as times.
+exec parquetry to csv times.parquet
+! stderr .
+cmp stdout times.csv
+
+-- alphav.csv --
+A
+a
+b
+c
+d
+e
+f
+g
+-- alphaw.csv --
+A,B,C,D,E,F,G
+a,b,c,d,e,f,g
+-- alphamapv.csv --
+M
+"{""A"":""a""}"
+"{""B"":""b""}"
+"{""C"":""c""}"
+-- alphamapw.csv --
+M
+"{""A"":""a"",""B"":""b"",""C"":""c""}"
+-- times.csv --
+Date,Stamp,Sms,Sus,Sns,Time,Tms,Tus,Tns
+2024-12-18,2024-12-18T09:23:19.123Z,2024-12-18T09:23:19.123Z,1734513799123456,1734513799123456789,2024-12-18T09:23:19.123Z,2024-12-18T09:23:19.123Z,2024-12-18T09:23:19.123456789Z,2024-12-18T09:23:19.123456789Z
