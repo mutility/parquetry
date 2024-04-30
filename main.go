@@ -363,7 +363,9 @@ func printWhere(c *cli.Context, where ReflectFilter, name string) error {
 	w := c.App.Writer
 	return withReader(name, func(pq *parquet.Reader) error {
 		return eachRow(c, pq, func(v reflect.Value) error {
-			if where(v) {
+			if include, err := where.Eval(v); err != nil {
+				return err
+			} else if include {
 				_, err := fmt.Fprintf(w, "%+v\n", v.Interface())
 				return err
 			}
