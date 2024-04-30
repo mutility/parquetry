@@ -37,6 +37,22 @@ func epochString[T interface {
 	return epochTime(t.offset()).In(t.loc()).Format(t.layout())
 }
 
+func epochCompare[T interface {
+	offset() time.Duration
+}](a T, b any) int {
+	switch b := b.(type) {
+	case time.Time:
+		return epochTime(a.offset()).Compare(b)
+	case string:
+		t, err := time.Parse(b, time.RFC3339Nano)
+		if err != nil {
+			t, err = time.Parse(b, time.DateOnly)
+		}
+		return epochTime(a.offset()).Compare(t)
+	}
+	panic("aieee")
+}
+
 func marshalEpoch[T interface {
 	offset() time.Duration
 	loc() *time.Location
@@ -74,6 +90,21 @@ func (t TimeMicroLoc) MarshalText() ([]byte, error)  { return marshalEpoch(t) }
 func (t TimeMicroUTC) MarshalText() ([]byte, error)  { return marshalEpoch(t) }
 func (t TimeNanoLoc) MarshalText() ([]byte, error)   { return marshalEpoch(t) }
 func (t TimeNanoUTC) MarshalText() ([]byte, error)   { return marshalEpoch(t) }
+
+func (t LocDate) Compare(b any) int       { return epochCompare(t, b) }
+func (t UTCDate) Compare(b any) int       { return epochCompare(t, b) }
+func (t StampMilliLoc) Compare(b any) int { return epochCompare(t, b) }
+func (t StampMilliUTC) Compare(b any) int { return epochCompare(t, b) }
+func (t StampMicroLoc) Compare(b any) int { return epochCompare(t, b) }
+func (t StampMicroUTC) Compare(b any) int { return epochCompare(t, b) }
+func (t StampNanoLoc) Compare(b any) int  { return epochCompare(t, b) }
+func (t StampNanoUTC) Compare(b any) int  { return epochCompare(t, b) }
+func (t TimeMilliLoc) Compare(b any) int  { return epochCompare(t, b) }
+func (t TimeMilliUTC) Compare(b any) int  { return epochCompare(t, b) }
+func (t TimeMicroLoc) Compare(b any) int  { return epochCompare(t, b) }
+func (t TimeMicroUTC) Compare(b any) int  { return epochCompare(t, b) }
+func (t TimeNanoLoc) Compare(b any) int   { return epochCompare(t, b) }
+func (t TimeNanoUTC) Compare(b any) int   { return epochCompare(t, b) }
 
 func (t LocDate) offset() time.Duration       { return time.Duration(t) * t.unit() }
 func (t UTCDate) offset() time.Duration       { return time.Duration(t) * t.unit() }

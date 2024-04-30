@@ -39,6 +39,7 @@ func run(args []string) error {
 			Usage:  "output only last N rows; skip if negative",
 		},
 	}
+
 	app := cli.App{
 		Name:  "parquetry",
 		Usage: "Tooling for parquet files",
@@ -66,6 +67,10 @@ func run(args []string) error {
 					{Name: "jsonl", Flags: headtailFlags, Action: eachFile(printJSONL)},
 				},
 			},
+			{
+				Name:   "where",
+				Action: thenEachFile(ParseReflectFilter, printWhere),
+			},
 		},
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -80,6 +85,23 @@ func eachFile(action FilenameAction) cli.ActionFunc {
 	return func(c *cli.Context) error {
 		for _, name := range c.Args().Slice() {
 			if err := action(c, name); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+type ThenFilenameAction[T any] func(c *cli.Context, x T, name string) error
+
+func thenEachFile[T any](fn func(string) (T, error), action ThenFilenameAction[T]) cli.ActionFunc {
+	return func(c *cli.Context) error {
+		x, err := fn(c.Args().First())
+		if err != nil {
+			return err
+		}
+		for _, name := range c.Args().Tail() {
+			if err := action(c, x, name); err != nil {
 				return err
 			}
 		}
@@ -333,6 +355,19 @@ func printJSONL(c *cli.Context, name string) error {
 	return withReader(name, func(pq *parquet.Reader) error {
 		return eachRow(c, pq, func(v reflect.Value) error {
 			return enc.Encode(v.Interface())
+		})
+	})
+}
+
+func printWhere(c *cli.Context, where ReflectFilter, name string) error {
+	w := c.App.Writer
+	return withReader(name, func(pq *parquet.Reader) error {
+		return eachRow(c, pq, func(v reflect.Value) error {
+			if where(v) {
+				_, err := fmt.Fprintf(w, "%+v\n", v.Interface())
+				return err
+			}
+			return nil
 		})
 	})
 }

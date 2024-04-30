@@ -3,6 +3,7 @@ module github.com/mutility/parquetry
 go 1.22.1
 
 require (
+	github.com/flexera/tabular v0.0.0-20240313132131-df322a4c6a80
 	github.com/parquet-go/parquet-go v0.20.1
 	github.com/rogpeppe/go-internal v1.12.0
 	github.com/urfave/cli/v2 v2.27.1
@@ -24,3 +25,5 @@ require (
 )
 
 replace github.com/parquet-go/parquet-go => ../../../flexera/parquet-go
+
+replace github.com/flexera/tabular => ../../../flexera/tabular
