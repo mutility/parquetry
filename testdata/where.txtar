@@ -12,6 +12,10 @@ stderr .
 exec parquetry where 'A eq ''d'' OR A eq ''f''' alphav.parquet
 cmp stdout alphav.want
 
+# alphav: in specified format
+exec parquetry where --jsonl 'A eq ''d'' OR A eq ''f''' alphav.parquet
+cmp stdout alphav.json
+
 # alphaw: include matching row
 exec parquetry where 'A eq ''f'' OR A eq ''a''' alphaw.parquet
 cmp stdout alphaw.want
@@ -87,6 +91,9 @@ cmp stdout timestamps-1.want
 -- alphav.want --
 {A:d}
 {A:f}
+-- alphav.json --
+{"A":"d"}
+{"A":"f"}
 -- alphaw.want --
 {A:a B:b C:c D:d E:e F:f G:g}
 -- alphamapv.want --

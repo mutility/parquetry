@@ -50,6 +50,7 @@ func run(args []string) error {
 		&cli.StringFlag{
 			Name:   "format",
 			Value:  "go",
+			Action: set(&formatFlag),
 			Hidden: true,
 		},
 		&cli.BoolFlag{Name: "csv", Action: setKnown[bool](&formatFlag, "csv"), Usage: "output CSV"},
@@ -98,7 +99,7 @@ func run(args []string) error {
 			},
 			{
 				Name:   "where",
-				Flags:  append(formatFlags, headtailFlags...),
+				Flags:  formatFlags,
 				Action: thenEachFile(ParseReflectFilter, printWhere),
 			},
 		},
@@ -116,7 +117,7 @@ func newFormatWriter(c *cli.Context, pq *parquetReader) RowWriteCloser {
 		"csv":   newCSVWriter,
 		"json":  newJSONWriter,
 		"jsonl": newJSONLWriter,
-	}[c.String("format")](c, pq)
+	}[formatFlag](c, pq)
 }
 
 type RowWriteCloser interface {
@@ -128,9 +129,8 @@ func printAs(new func(*cli.Context, *parquetReader) RowWriteCloser) cli.ActionFu
 	return eachFile(func(c *cli.Context, name string) error {
 		return withReader(name, func(pq *parquetReader) error {
 			w := new(c, pq)
-			return errors.Join(eachRow(c, pq, func(v reflect.Value) error {
-				return w.Write(v)
-			}), w.Close())
+			err := eachRow(c, pq, w.Write)
+			return errors.Join(err, w.Close())
 		})
 	})
 }
@@ -331,16 +331,16 @@ func printSchema(c *cli.Context, name string) error {
 }
 
 func printWhere(c *cli.Context, where ReflectFilter, name string) error {
-	w := c.App.Writer
 	return withReader(name, func(pq *parquetReader) error {
-		return eachRow(c, pq, func(v reflect.Value) error {
+		w := newFormatWriter(c, pq)
+		err := eachRow(c, pq, func(v reflect.Value) error {
 			if include, err := where.Eval(v); err != nil {
 				return err
 			} else if include {
-				_, err := fmt.Fprintf(w, "%+v\n", v.Interface())
-				return err
+				return w.Write(v)
 			}
 			return nil
 		})
+		return errors.Join(err, w.Close())
 	})
 }
