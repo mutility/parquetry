@@ -23,10 +23,20 @@ exec parquetry to json alphamapw.parquet
 ! stderr .
 cmp stdout alphamapw.json
 
-# times should reflect precision. Sus/Sns aren't marked as times.
+# dates should look like dates, not numbers
+exec parquetry to json dates.parquet
+! stderr .
+cmp stdout dates.json
+
+# times should look like times, not numbers or dates
 exec parquetry to json times.parquet
 ! stderr .
 cmp stdout times.json
+
+# timestamps should reflect precision.
+exec parquetry to json timestamps.parquet
+! stderr .
+cmp stdout timestamps.json
 
 -- alphav.json --
 [
@@ -52,7 +62,20 @@ cmp stdout times.json
 [
   {"M":{"A":"a","B":"b","C":"c"}}
 ]
+-- dates.json --
+[
+  {"Date":"1970-05-04"},
+  {"Date":"1973-05-19"},
+  {"Date":"2003-10-20"}
+]
 -- times.json --
 [
-  {"Date":"2024-12-18","Stamp":"2024-12-18T09:23:19.123Z","Sms":"2024-12-18T09:23:19.123Z","Sus":1734513799123456,"Sns":1734513799123456789,"Time":"2024-12-18T09:23:19.123Z","Tms":"2024-12-18T09:23:19.123Z","Tus":"2024-12-18T09:23:19.123456789Z","Tns":"2024-12-18T09:23:19.123456789Z"}
+  {"Ms":"03:25:45.678Z","Us":"00:00:12.345678Z","Ns":"00:00:00.012345678Z"},
+  {"Ms":"10:17:36.789Z","Us":"00:02:03.456789Z","Ns":"00:00:00.123456789Z"}
+]
+-- timestamps.json --
+[
+  {"Sms":"2024-12-18T09:23:19.123Z","Sus":"2024-12-18T09:23:19.123456Z","Sns":"2024-12-18T09:23:19.123456789Z","Tms":"2024-12-18T09:23:19.123Z","Tus":"2024-12-18T09:23:19.123456Z","Tns":"2024-12-18T09:23:19.123456789Z"},
+  {"Sms":"2012-07-07T03:11:45.123Z","Sus":"2012-07-07T03:11:45.123456Z","Sns":"2012-07-07T03:11:45.123456789Z","Tms":"2012-07-07T03:11:45.123Z","Tus":"2012-07-07T03:11:45.123456Z","Tns":"2012-07-07T03:11:45.123456789Z"},
+  {"Sms":"2018-02-22T02:22:22.123Z","Sus":"2018-02-22T02:22:22.123456Z","Sns":"2018-02-22T02:22:22.123456789Z","Tms":"2018-02-22T02:22:22.123Z","Tus":"2018-02-22T02:22:22.123456Z","Tns":"2018-02-22T02:22:22.123456789Z"}
 ]

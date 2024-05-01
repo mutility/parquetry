@@ -16,19 +16,73 @@ cmp stdout alphav.want
 exec parquetry where 'A eq ''f'' OR A eq ''a''' alphaw.parquet
 cmp stdout alphaw.want
 
-# alphamapv: only matching rows
-exec parquetry where 'M.B ne ''b''' alphamapv.parquet
+# alphamapv
+exec parquetry where 'M.B eq null OR M.B ne ''b''' alphamapv.parquet
 cmp stdout alphamapv.want
 
 # alphamapw: matching row
 exec parquetry where 'M.B ne ''C''' alphamapw.parquet
 cmp stdout alphamapw.want
 
-# times should reflect precision. Sus/Sns aren't marked as times.
-exec parquetry where 'Date gt ''2011-11-11''' times.parquet
-cmp stdout times.want
-exec parquetry where 'Date lt ''2011-11-11''' times.parquet
-! stdout .
+# dates can be compared by string 'YYYY-MM-DD'
+exec parquetry where 'Date eq ''1973-05-19''' dates.parquet
+cmp stdout dates-eq.want
+exec parquetry where 'Date gt ''1973-05-19''' dates.parquet
+cmp stdout dates-gt.want
+exec parquetry where 'Date lt ''1973-05-19''' dates.parquet
+cmp stdout dates-lt.want
+
+# dates can be compared by int days-since-epoch
+exec parquetry where 'Date eq 1234' dates.parquet
+cmp stdout dates-eq.want
+exec parquetry where 'Date gt 1234' dates.parquet
+cmp stdout dates-gt.want
+exec parquetry where 'Date lt 1234' dates.parquet
+cmp stdout dates-lt.want
+
+# times can be compared by string '01h02m03s'
+exec parquetry where 'Ms eq ''3h25m45.6789s''' times.parquet
+cmp stdout times-1.want
+exec parquetry where 'Us gt ''12.345678s''' times.parquet
+cmp stdout times-2.want
+exec parquetry where 'Ns lt ''0.123456789s''' times.parquet
+cmp stdout times-1.want
+
+# times can be compared by int unit-since-midnight
+exec parquetry where 'Ms eq 12345678' times.parquet
+cmp stdout times-1.want
+exec parquetry where 'Us gt 12345678' times.parquet
+cmp stdout times-2.want
+exec parquetry where 'Ns lt 123456789' times.parquet
+cmp stdout times-1.want
+
+# stamps can be compared by string 'YYYY-MM-DDThh:mm:ss.nnnZ'
+exec parquetry where 'Sms eq ''2018-02-22T02:22:22.123456789Z''' timestamps.parquet
+cmp stdout timestamps-2.want
+exec parquetry where 'Sus gt ''2018-02-22T02:22:22.123456789Z''' timestamps.parquet
+cmp stdout timestamps-3.want
+exec parquetry where 'Sns lt ''2018-02-22T02:22:22.123456789Z''' timestamps.parquet
+cmp stdout timestamps-1.want
+exec parquetry where 'Tms eq ''2018-02-22T02:22:22.123456789Z''' timestamps.parquet
+cmp stdout timestamps-2.want
+exec parquetry where 'Tus gt ''2018-02-22T02:22:22.123456789Z''' timestamps.parquet
+cmp stdout timestamps-3.want
+exec parquetry where 'Tns lt ''2018-02-22T02:22:22.123456789Z''' timestamps.parquet
+cmp stdout timestamps-1.want
+
+# stamps can be compared by int unit-since-epoch'
+exec parquetry where 'Sms eq 1519266142123' timestamps.parquet
+cmp stdout timestamps-2.want
+exec parquetry where 'Sus gt 1519266142123456' timestamps.parquet
+cmp stdout timestamps-3.want
+exec parquetry where 'Sns lt 1519266142123456789' timestamps.parquet
+cmp stdout timestamps-1.want
+exec parquetry where 'Tms eq 1519266142123' timestamps.parquet
+cmp stdout timestamps-2.want
+exec parquetry where 'Tus gt 1519266142123456' timestamps.parquet
+cmp stdout timestamps-3.want
+exec parquetry where 'Tns lt 1519266142123456789' timestamps.parquet
+cmp stdout timestamps-1.want
 
 -- alphav.want --
 {A:d}
@@ -40,5 +94,19 @@ exec parquetry where 'Date lt ''2011-11-11''' times.parquet
 {M:map[C:c]}
 -- alphamapw.want --
 {M:map[A:a B:b C:c]}
--- times.want --
-{Date:2024-12-18 Stamp:2024-12-18T09:23:19.123Z Sms:2024-12-18T09:23:19.123Z Sus:1734513799123456 Sns:1734513799123456789 Time:2024-12-18T09:23:19.123Z Tms:2024-12-18T09:23:19.123Z Tus:2024-12-18T09:23:19.123456789Z Tns:2024-12-18T09:23:19.123456789Z}
+-- dates-eq.want --
+{Date:1973-05-19}
+-- dates-gt.want --
+{Date:2003-10-20}
+-- dates-lt.want --
+{Date:1970-05-04}
+-- times-1.want --
+{Ms:03:25:45.678Z Us:00:00:12.345678Z Ns:00:00:00.012345678Z}
+-- times-2.want --
+{Ms:10:17:36.789Z Us:00:02:03.456789Z Ns:00:00:00.123456789Z}
+-- timestamps-1.want --
+{Sms:2012-07-07T03:11:45.123Z Sus:2012-07-07T03:11:45.123456Z Sns:2012-07-07T03:11:45.123456789Z Tms:2012-07-07T03:11:45.123Z Tus:2012-07-07T03:11:45.123456Z Tns:2012-07-07T03:11:45.123456789Z}
+-- timestamps-2.want --
+{Sms:2018-02-22T02:22:22.123Z Sus:2018-02-22T02:22:22.123456Z Sns:2018-02-22T02:22:22.123456789Z Tms:2018-02-22T02:22:22.123Z Tus:2018-02-22T02:22:22.123456Z Tns:2018-02-22T02:22:22.123456789Z}
+-- timestamps-3.want --
+{Sms:2024-12-18T09:23:19.123Z Sus:2024-12-18T09:23:19.123456Z Sns:2024-12-18T09:23:19.123456789Z Tms:2024-12-18T09:23:19.123Z Tus:2024-12-18T09:23:19.123456Z Tns:2024-12-18T09:23:19.123456789Z}

@@ -23,10 +23,20 @@ exec parquetry to csv alphamapw.parquet
 ! stderr .
 cmp stdout alphamapw.csv
 
-# times should reflect precision. Sus/Sns aren't marked as times.
+# dates should look like dates, not numbers
+exec parquetry to csv dates.parquet
+! stderr .
+cmp stdout dates.csv
+
+# times should look like times, not numbers or dates
 exec parquetry to csv times.parquet
 ! stderr .
 cmp stdout times.csv
+
+# timestamps should reflect precision.
+exec parquetry to csv timestamps.parquet
+! stderr .
+cmp stdout timestamps.csv
 
 -- alphav.csv --
 A
@@ -48,6 +58,17 @@ M
 -- alphamapw.csv --
 M
 "{""A"":""a"",""B"":""b"",""C"":""c""}"
+-- dates.csv --
+Date
+1970-05-04
+1973-05-19
+2003-10-20
 -- times.csv --
-Date,Stamp,Sms,Sus,Sns,Time,Tms,Tus,Tns
-2024-12-18,2024-12-18T09:23:19.123Z,2024-12-18T09:23:19.123Z,1734513799123456,1734513799123456789,2024-12-18T09:23:19.123Z,2024-12-18T09:23:19.123Z,2024-12-18T09:23:19.123456789Z,2024-12-18T09:23:19.123456789Z
+Ms,Us,Ns
+03:25:45.678Z,00:00:12.345678Z,00:00:00.012345678Z
+10:17:36.789Z,00:02:03.456789Z,00:00:00.123456789Z
+-- timestamps.csv --
+Sms,Sus,Sns,Tms,Tus,Tns
+2024-12-18T09:23:19.123Z,2024-12-18T09:23:19.123456Z,2024-12-18T09:23:19.123456789Z,2024-12-18T09:23:19.123Z,2024-12-18T09:23:19.123456Z,2024-12-18T09:23:19.123456789Z
+2012-07-07T03:11:45.123Z,2012-07-07T03:11:45.123456Z,2012-07-07T03:11:45.123456789Z,2012-07-07T03:11:45.123Z,2012-07-07T03:11:45.123456Z,2012-07-07T03:11:45.123456789Z
+2018-02-22T02:22:22.123Z,2018-02-22T02:22:22.123456Z,2018-02-22T02:22:22.123456789Z,2018-02-22T02:22:22.123Z,2018-02-22T02:22:22.123456Z,2018-02-22T02:22:22.123456789Z

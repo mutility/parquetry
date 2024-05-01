@@ -43,7 +43,11 @@ func (v *visitor) lhs(id ast.Ident) (reflect.Value, error) {
 		}
 		switch val.Kind() {
 		case reflect.Struct:
+			t := val.Type()
 			val = val.FieldByName(name)
+			if !val.IsValid() {
+				return val, fmt.Errorf("unknown field %s in %s", name, t)
+			}
 		case reflect.Map:
 			val = val.MapIndex(reflect.ValueOf(name))
 		default:
@@ -60,12 +64,17 @@ func (v *visitor) AcceptComparison(op ast.Operator, a ast.Ident, b ast.Lit) any 
 	}
 
 	if _, ok := b.(ast.Null); ok {
+		isnull := !lhs.IsValid() ||
+			((lhs.Kind() == reflect.Pointer ||
+				lhs.Kind() == reflect.Interface ||
+				lhs.Kind() == reflect.Map) && lhs.IsNil())
 		switch op {
 		case ast.EQ:
-			return !lhs.IsValid() || lhs.IsNil() || lhs.Interface() == nil
+			return isnull
 		case ast.NE:
-			return lhs.IsValid() && !lhs.IsNil() && lhs.Interface() != nil
+			return !isnull
 		}
+		return fmt.Errorf("unsupported null op: %s %s %s", a, op, b)
 	}
 
 	order := func(a, b reflect.Value, before, zero, after bool) any {
@@ -80,6 +89,10 @@ func (v *visitor) AcceptComparison(op ast.Operator, a ast.Ident, b ast.Lit) any 
 			}
 			return fmt.Errorf("impossible")
 		}
+		if !a.IsValid() || !b.IsValid() {
+			return fmt.Errorf("invalid comparison: %v vs %v", a, b)
+		}
+
 		if v, ok := a.Interface().(interface{ Compare(any) any }); ok {
 			cmp := v.Compare(b.Interface())
 			switch cmp := cmp.(type) {
@@ -115,6 +128,16 @@ func (v *visitor) AcceptComparison(op ast.Operator, a ast.Ident, b ast.Lit) any 
 		return fmt.Errorf("incompatible types: %s and %s", a.Type(), b.Type())
 	}
 
+	match := func(a, b reflect.Value, eq bool) any {
+		switch {
+		case !a.IsValid(), !b.IsValid():
+			return eq
+		case a.IsValid(), b.IsValid():
+			return order(a, b, !eq, eq, !eq)
+		}
+		return !eq // invalid vs valid is a mismatch
+	}
+
 	memberOf := func(a, b reflect.Value, in bool) any {
 		switch a.Kind() {
 		case reflect.Slice, reflect.Array:
@@ -140,9 +163,9 @@ func (v *visitor) AcceptComparison(op ast.Operator, a ast.Ident, b ast.Lit) any 
 
 	switch op {
 	case ast.EQ:
-		return lhs.Equal(rhs)
+		return match(lhs, rhs, true)
 	case ast.NE:
-		return !lhs.Equal(rhs)
+		return match(lhs, rhs, false)
 	case ast.LT:
 		return order(lhs, rhs, true, false, false)
 	case ast.LE:

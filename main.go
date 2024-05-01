@@ -266,7 +266,7 @@ func goLogicalTypeField(pf parquet.Field, path []string) reflect.StructField {
 			mapfields := goLogicalTypeFields(kvs.Fields(), append(path, kvs.Name()))
 			sf.Type = reflect.MapOf(mapfields[0].Type, mapfields[1].Type)
 		case lt.Date != nil:
-			sf.Type = reflect.TypeFor[UTCDate]()
+			sf.Type = reflect.TypeFor[Date]()
 		case lt.Time != nil:
 			switch {
 			case lt.Time.Unit.Millis != nil:

@@ -23,10 +23,20 @@ exec parquetry schema alphamapw.parquet
 ! stderr .
 cmp stdout alphamapw.want
 
-# times should leverage most time storages; currently does not (writing-time bugs?)
+# dates exercizes date storage
+exec parquetry schema dates.parquet
+! stderr .
+cmp stdout dates.want
+
+# times should leverage most time storages
 exec parquetry schema times.parquet
 ! stderr .
 cmp stdout times.want
+
+# timestamps should leverage most time storages
+exec parquetry schema timestamps.parquet
+! stderr .
+cmp stdout timestamps.want
 
 -- alphav.want --
 message {
@@ -60,15 +70,22 @@ message {
 		}
 	}
 }
--- times.want --
+-- dates.want --
 message {
 	required int32 Date (DATE);
-	required int64 Stamp (TIMESTAMP(isAdjustedToUTC=true,unit=MILLIS));
+}
+-- times.want --
+message {
+	required int32 Ms (TIME(isAdjustedToUTC=true,unit=MILLIS));
+	required int64 Us (TIME(isAdjustedToUTC=true,unit=MICROS));
+	required int64 Ns (TIME(isAdjustedToUTC=true,unit=NANOS));
+}
+-- timestamps.want --
+message {
 	required int64 Sms (TIMESTAMP(isAdjustedToUTC=true,unit=MILLIS));
-	required int64 Sus (INT(64,true));
-	required int64 Sns (INT(64,true));
-	required int64 Time (TIMESTAMP(isAdjustedToUTC=true,unit=MILLIS));
+	required int64 Sus (TIMESTAMP(isAdjustedToUTC=true,unit=MICROS));
+	required int64 Sns (TIMESTAMP(isAdjustedToUTC=true,unit=NANOS));
 	required int64 Tms (TIMESTAMP(isAdjustedToUTC=true,unit=MILLIS));
-	required int64 Tus (TIMESTAMP(isAdjustedToUTC=true,unit=NANOS));
+	required int64 Tus (TIMESTAMP(isAdjustedToUTC=true,unit=MICROS));
 	required int64 Tns (TIMESTAMP(isAdjustedToUTC=true,unit=NANOS));
 }

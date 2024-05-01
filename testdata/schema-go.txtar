@@ -23,10 +23,20 @@ exec parquetry schema -go alphamapw.parquet
 ! stderr .
 cmp stdout alphamapw.want
 
-# times should leverage most time storages; currently does not (writing-time bugs?)
+# dates exercizes date storage
+exec parquetry schema -go dates.parquet
+! stderr .
+cmp stdout dates.want
+
+# times should leverage most time storages
 exec parquetry schema -go times.parquet
 ! stderr .
 cmp stdout times.want
+
+# timestamps should leverage most time storages
+exec parquetry schema -go timestamps.parquet
+! stderr .
+cmp stdout timestamps.want
 
 -- alphav.want --
 struct { A string }
@@ -36,5 +46,9 @@ struct { A string; B string; C string; D string; E string; F string; G string }
 struct { M map[string]string }
 -- alphamapw.want --
 struct { M map[string]string }
+-- dates.want --
+struct { Date main.Date }
 -- times.want --
-struct { Date main.UTCDate; Stamp main.StampMilliUTC; Sms main.StampMilliUTC; Sus int64; Sns int64; Time main.StampMilliUTC; Tms main.StampMilliUTC; Tus main.StampNanoUTC; Tns main.StampNanoUTC }
+struct { Ms main.TimeMilliUTC; Us main.TimeMicroUTC; Ns main.TimeNanoUTC }
+-- timestamps.want --
+struct { Sms main.StampMilliUTC; Sus main.StampMicroUTC; Sns main.StampNanoUTC; Tms main.StampMilliUTC; Tus main.StampMicroUTC; Tns main.StampNanoUTC }

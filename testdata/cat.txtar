@@ -33,10 +33,20 @@ exec parquetry cat alphamapw.parquet
 ! stderr .
 cmp stdout alphamapw.want
 
-# times should reflect precision. Sus/Sns aren't marked as times.
+# dates should look like dates, not numbers
+exec parquetry cat dates.parquet
+! stderr .
+cmp stdout dates.want
+
+# times should look like times, not numbers or dates
 exec parquetry cat times.parquet
 ! stderr .
 cmp stdout times.want
+
+# timestamps should reflect precision.
+exec parquetry cat timestamps.parquet
+! stderr .
+cmp stdout timestamps.want
 
 -- alphav.want --
 {A:a}
@@ -62,5 +72,14 @@ cmp stdout times.want
 {M:map[C:c]}
 -- alphamapw.want --
 {M:map[A:a B:b C:c]}
+-- dates.want --
+{Date:1970-05-04}
+{Date:1973-05-19}
+{Date:2003-10-20}
 -- times.want --
-{Date:2024-12-18 Stamp:2024-12-18T09:23:19.123Z Sms:2024-12-18T09:23:19.123Z Sus:1734513799123456 Sns:1734513799123456789 Time:2024-12-18T09:23:19.123Z Tms:2024-12-18T09:23:19.123Z Tus:2024-12-18T09:23:19.123456789Z Tns:2024-12-18T09:23:19.123456789Z}
+{Ms:03:25:45.678Z Us:00:00:12.345678Z Ns:00:00:00.012345678Z}
+{Ms:10:17:36.789Z Us:00:02:03.456789Z Ns:00:00:00.123456789Z}
+-- timestamps.want --
+{Sms:2024-12-18T09:23:19.123Z Sus:2024-12-18T09:23:19.123456Z Sns:2024-12-18T09:23:19.123456789Z Tms:2024-12-18T09:23:19.123Z Tus:2024-12-18T09:23:19.123456Z Tns:2024-12-18T09:23:19.123456789Z}
+{Sms:2012-07-07T03:11:45.123Z Sus:2012-07-07T03:11:45.123456Z Sns:2012-07-07T03:11:45.123456789Z Tms:2012-07-07T03:11:45.123Z Tus:2012-07-07T03:11:45.123456Z Tns:2012-07-07T03:11:45.123456789Z}
+{Sms:2018-02-22T02:22:22.123Z Sus:2018-02-22T02:22:22.123456Z Sns:2018-02-22T02:22:22.123456789Z Tms:2018-02-22T02:22:22.123Z Tus:2018-02-22T02:22:22.123456Z Tns:2018-02-22T02:22:22.123456789Z}
