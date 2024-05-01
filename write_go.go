@@ -7,7 +7,7 @@ import (
 )
 
 func newGoWriter(c *cliContext, pq *parquetReader) RowWriteCloser {
-	return &goWriter{c.App.Writer}
+	return &goWriter{c.Stdout}
 }
 
 type goWriter struct {

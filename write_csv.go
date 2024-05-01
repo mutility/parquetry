@@ -11,8 +11,8 @@ import (
 	"github.com/parquet-go/parquet-go"
 )
 
-func newCSVWriter(c *cliContext, pq *parquetReader) RowWriteCloser {
-	return &csvWriter{w: c.App.Writer, s: pq.Schema()}
+func newCSVWriter(k *cliContext, pq *parquetReader) RowWriteCloser {
+	return &csvWriter{w: k.Stdout, s: pq.Schema()}
 }
 
 type csvWriter struct {

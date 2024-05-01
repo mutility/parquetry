@@ -12,7 +12,7 @@ import (
 func TestMain(m *testing.M) {
 	os.Exit(testscript.RunMain(m, map[string]func() int{
 		"parquetry": func() int {
-			if err := run(os.Args); err != nil {
+			if _, err := run(); err != nil {
 				println(err.Error())
 				return 1
 			}

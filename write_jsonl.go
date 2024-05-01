@@ -7,7 +7,7 @@ import (
 )
 
 func newJSONLWriter(c *cliContext, pq *parquetReader) RowWriteCloser {
-	return &jsonlWriter{w: c.App.Writer}
+	return &jsonlWriter{w: c.Stdout}
 }
 
 type jsonlWriter struct {

@@ -1,40 +1,40 @@
 # missing files should be reported and fail
-! exec parquetry schema -go missing.parquet
+! exec parquetry schema -l missing.parquet
 stderr 'missing.parquet: no such file or directory'
 ! stdout .
 
 # alphav should be vertical
-exec parquetry schema -go alphav.parquet
+exec parquetry schema -l alphav.parquet
 ! stderr .
 cmp stdout alphav.want
 
 # alphaw should be wide
-exec parquetry schema -go alphaw.parquet
+exec parquetry schema -l alphaw.parquet
 ! stderr .
 cmp stdout alphaw.want
 
 # alphamapv should be vertical
-exec parquetry schema -go alphamapv.parquet
+exec parquetry schema -l alphamapv.parquet
 ! stderr .
 cmp stdout alphamapv.want
 
 # alphamapw should be wide
-exec parquetry schema -go alphamapw.parquet
+exec parquetry schema -l alphamapw.parquet
 ! stderr .
 cmp stdout alphamapw.want
 
 # dates exercizes date storage
-exec parquetry schema -go dates.parquet
+exec parquetry schema -l dates.parquet
 ! stderr .
 cmp stdout dates.want
 
 # times should leverage most time storages
-exec parquetry schema -go times.parquet
+exec parquetry schema -l times.parquet
 ! stderr .
 cmp stdout times.want
 
 # timestamps should leverage most time storages
-exec parquetry schema -go timestamps.parquet
+exec parquetry schema -l timestamps.parquet
 ! stderr .
 cmp stdout timestamps.want
 

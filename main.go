@@ -1,123 +1,121 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"reflect"
 	"strings"
 
+	"github.com/alecthomas/kong"
 	"github.com/parquet-go/parquet-go"
-	"github.com/urfave/cli/v2"
-)
-
-var (
-	headFlag, tailFlag int64
-	formatFlag         string
 )
 
 type (
-	cliContext    = cli.Context
+	cliContext    = kong.Context
 	parquetReader = parquet.Reader
 )
 
+var cli struct {
+	Cat    CatCmd    `cmd:"" help:"print a parquet file"`
+	Schema SchemaCmd `cmd:"" help:"print a parquet schema"`
+	To     struct {
+		Csv   ToCsvCmd   `cmd:"" help:"convert parquet to CSV"`
+		JSON  ToJSONCmd  `cmd:"" help:"convert parquet to JSON"`
+		JSONL ToJSONLCmd `cmd:"" help:"convert parquet to JSON-Lines"`
+	} `cmd:"" help:"convert parquet to..."`
+	Where WhereCmd `cmd:"" help:"filter a parquet file"`
+}
+
 func main() {
-	if err := run(os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	k, err := run()
+	k.FatalIfErrorf(err)
 }
 
-func set[T any](p *T) func(*cli.Context, T) error {
-	return func(ctx *cli.Context, v T) error {
-		*p = v
-		return nil
-	}
+func run() (*kong.Context, error) {
+	k := kong.Parse(&cli,
+		kong.Name("parquetry"),
+		kong.Description("Tooling for parquet files"),
+		kong.ConfigureHelp(kong.HelpOptions{Compact: true}),
+	)
+	err := k.Run()
+	return k, err
 }
 
-func setKnown[Discard, T any](p *T, known T) func(*cli.Context, Discard) error {
-	return func(*cli.Context, Discard) error {
-		*p = known
-		return nil
-	}
+type FormatFlags struct {
+	Go    bool `help:"format as go (default)" xor:"go,csv,json,jsonl" group:"Output Format:"`
+	Csv   bool `help:"format as CSV" xor:"go,csv,json,jsonl" group:"Output Format:"`
+	Json  bool `help:"format as JSON" xor:"go,csv,json,jsonl" group:"Output Format:"`
+	Jsonl bool `help:"format as JSON-Lines" xor:"go,csv,json,jsonl" group:"Output Format:"`
 }
 
-func run(args []string) error {
-	formatFlags := []cli.Flag{
-		&cli.StringFlag{
-			Name:   "format",
-			Value:  "go",
-			Action: set(&formatFlag),
-			Hidden: true,
-		},
-		&cli.BoolFlag{Name: "csv", Action: setKnown[bool](&formatFlag, "csv"), Usage: "output CSV"},
-		&cli.BoolFlag{Name: "json", Action: setKnown[bool](&formatFlag, "json"), Usage: "output JSON"},
-		&cli.BoolFlag{Name: "jsonl", Action: setKnown[bool](&formatFlag, "jsonl"), Usage: "output JSON-Lines"},
-	}
-	headtailFlags := []cli.Flag{
-		&cli.Int64Flag{
-			Name:   "head",
-			Action: set(&headFlag),
-			Usage:  "output only first N rows; skip if negative",
-		},
-		&cli.Int64Flag{
-			Name:   "tail",
-			Action: set(&tailFlag),
-			Usage:  "output only last N rows; skip if negative",
-		},
-	}
-
-	app := cli.App{
-		Name:  "parquetry",
-		Usage: "Tooling for parquet files",
-		Commands: []*cli.Command{
-			{
-				Name:   "cat",
-				Flags:  append(formatFlags, headtailFlags...),
-				Action: printAs(newFormatWriter),
-			},
-			{
-				Name: "schema",
-				Flags: []cli.Flag{
-					&cli.BoolFlag{Name: "go", Usage: "output a go struct definition"},
-					&cli.BoolFlag{Name: "physical", Usage: "output a physical go struct definition"},
-					&cli.BoolFlag{Name: "logical", Usage: "output a logical go struct definition"},
-				},
-				Action: eachFile(printSchema),
-			},
-			{
-				Name:  "to",
-				Flags: headtailFlags,
-				Subcommands: []*cli.Command{
-					{Name: "csv", Flags: headtailFlags, Action: printAs(newCSVWriter)},
-					{Name: "json", Flags: headtailFlags, Action: printAs(newJSONWriter)},
-					{Name: "jsonl", Flags: headtailFlags, Action: printAs(newJSONLWriter)},
-				},
-			},
-			{
-				Name:   "where",
-				Flags:  formatFlags,
-				Action: thenEachFile(ParseReflectFilter, printWhere),
-			},
-		},
-	}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	err := app.RunContext(ctx, args)
-	cancel()
-	return err
+type HeadTailFlags struct {
+	Head int64 `help:"include first +n or skip first -n records" xor:"head,tail"`
+	Tail int64 `help:"include last +n or skip last -n records" xor:"head,tail"`
 }
 
-func newFormatWriter(c *cli.Context, pq *parquetReader) RowWriteCloser {
-	return map[string]func(*cli.Context, *parquetReader) RowWriteCloser{
-		"":      newGoWriter,
-		"go":    newGoWriter,
-		"csv":   newCSVWriter,
-		"json":  newJSONWriter,
-		"jsonl": newJSONLWriter,
-	}[formatFlag](c, pq)
+func (f FormatFlags) newWriter(k *kong.Context, pq *parquetReader) RowWriteCloser {
+	switch {
+	case f.Csv:
+		return newCSVWriter(k, pq)
+	case f.Json:
+		return newJSONWriter(k, pq)
+	case f.Jsonl:
+		return newJSONLWriter(k, pq)
+	}
+	return newGoWriter(k, pq)
+}
+
+type rowRange struct{ Start, Stop int64 }
+
+func (f *HeadTailFlags) rowRange(pq *parquetReader) (rng rowRange, err error) {
+	rows := pq.NumRows()
+	rng.Stop = rows
+	if f == nil {
+		return
+	}
+
+	switch {
+	case f.Head > 0:
+		rng.Stop = f.Head
+	case f.Head < 0:
+		rng.Start = -f.Head
+	case f.Tail > 0:
+		rng.Start = rng.Stop - f.Tail
+	case f.Tail < 0:
+		rng.Stop = rng.Stop + f.Tail
+	}
+	if rng.Start < 0 {
+		rng.Start = 0
+	}
+	if rng.Stop > rows {
+		rng.Stop = rows
+	}
+	return
+}
+
+type SchemaCmd struct {
+	Message  bool     `name:"message" help:"show as message definition" xor:"message,physical,logical"`
+	Physical bool     `short:"p" help:"show physical types as a go structure" xor:"message,physical,logical"`
+	Logical  bool     `short:"l" help:"show logical types as a go structure" xor:"message,physical,logical"`
+	Files    []string `arg:"" name:"file" help:"parqet files to print" type:"existingfile"`
+}
+
+func (c SchemaCmd) Run(k *kong.Context) error {
+	return eachFile(k, c.Files, func(k *kong.Context, name string) error {
+		return withReader(name, func(pq *parquetReader) (err error) {
+			switch {
+			case c.Logical:
+				_, err = fmt.Fprintln(k.Stdout, goLogicalType(pq.Schema()))
+			case c.Physical:
+				_, err = fmt.Fprintln(k.Stdout, pq.Schema().GoType())
+			default:
+				_, err = fmt.Fprintln(k.Stdout, pq.Schema())
+			}
+			return err
+		})
+	})
 }
 
 type RowWriteCloser interface {
@@ -125,44 +123,74 @@ type RowWriteCloser interface {
 	Close() error
 }
 
-func printAs(new func(*cli.Context, *parquetReader) RowWriteCloser) cli.ActionFunc {
-	return eachFile(func(c *cli.Context, name string) error {
+type CatCmd struct {
+	FormatFlags
+	HeadTailFlags
+	Files []string `arg:"" name:"file" help:"parqet files to print" type:"existingfile"`
+}
+
+type ToCsvCmd struct {
+	HeadTailFlags
+	Files []string `arg:"" name:"file" help:"parqet files to print" type:"existingfile"`
+}
+type ToJSONCmd struct {
+	HeadTailFlags
+	Files []string `arg:"" name:"file" help:"parqet files to print" type:"existingfile"`
+}
+type ToJSONLCmd struct {
+	HeadTailFlags
+	Files []string `arg:"" name:"file" help:"parqet files to print" type:"existingfile"`
+}
+
+type WhereCmd struct {
+	FormatFlags
+	Filter string   `arg:"" help:"include rows matching this expression"`
+	Files  []string `arg:"" name:"file" help:"parqet files to print" type:"existingfile"`
+}
+
+func (c CatCmd) Run(k *kong.Context) error {
+	return printAs(k, c.Files, &c.HeadTailFlags, c.newWriter, nil)
+}
+
+func (c ToCsvCmd) Run(k *kong.Context) error {
+	return printAs(k, c.Files, &c.HeadTailFlags, newCSVWriter, nil)
+}
+
+func (c ToJSONCmd) Run(k *kong.Context) error {
+	return printAs(k, c.Files, &c.HeadTailFlags, newJSONWriter, nil)
+}
+
+func (c ToJSONLCmd) Run(k *kong.Context) error {
+	return printAs(k, c.Files, &c.HeadTailFlags, newJSONLWriter, nil)
+}
+
+func (c WhereCmd) Run(k *kong.Context) error {
+	filter, err := ParseReflectFilter(c.Filter)
+	if err != nil {
+		return err
+	}
+	return printAs(k, c.Files, nil, c.newWriter, &filter)
+}
+
+func printAs(k *kong.Context, files []string, headtail *HeadTailFlags, newWriter func(*kong.Context, *parquetReader) RowWriteCloser, filter *ReflectFilter) error {
+	return eachFile(k, files, func(k *kong.Context, name string) error {
 		return withReader(name, func(pq *parquetReader) error {
-			w := new(c, pq)
-			err := eachRow(c, pq, w.Write)
+			w := newWriter(k, pq)
+			err := eachRow(k, pq, headtail, filter, w.Write)
 			return errors.Join(err, w.Close())
 		})
 	})
 }
 
-type FilenameAction func(c *cli.Context, name string) error
+type FilenameAction func(c *kong.Context, name string) error
 
-func eachFile(action FilenameAction) cli.ActionFunc {
-	return func(c *cli.Context) error {
-		for _, name := range c.Args().Slice() {
-			if err := action(c, name); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-}
-
-type ThenFilenameAction[T any] func(c *cli.Context, x T, name string) error
-
-func thenEachFile[T any](fn func(string) (T, error), action ThenFilenameAction[T]) cli.ActionFunc {
-	return func(c *cli.Context) error {
-		x, err := fn(c.Args().First())
-		if err != nil {
+func eachFile(k *kong.Context, files []string, do func(k *kong.Context, name string) error) error {
+	for _, name := range files {
+		if err := do(k, name); err != nil {
 			return err
 		}
-		for _, name := range c.Args().Tail() {
-			if err := action(c, x, name); err != nil {
-				return err
-			}
-		}
-		return nil
 	}
+	return nil
 }
 
 func withReader(name string, do func(*parquetReader) error) error {
@@ -177,32 +205,8 @@ func withReader(name string, do func(*parquetReader) error) error {
 	return do(pq)
 }
 
-func headtail(c *cli.Context, pq *parquetReader) (rng struct{ Start, Stop int64 }, err error) {
-	rows := pq.NumRows()
-	rng.Stop = rows
-	switch {
-	case headFlag != 0 && tailFlag != 0:
-		err = errors.New("both head and tail specified")
-	case headFlag > 0:
-		rng.Stop = headFlag
-	case headFlag < 0:
-		rng.Start = -headFlag
-	case tailFlag > 0:
-		rng.Start = rng.Stop - tailFlag
-	case tailFlag < 0:
-		rng.Stop = rng.Stop + tailFlag
-	}
-	if rng.Start < 0 {
-		rng.Start = 0
-	}
-	if rng.Stop > rows {
-		rng.Stop = rows
-	}
-	return
-}
-
-func eachRow(c *cli.Context, pq *parquetReader, do func(reflect.Value) error) error {
-	rng, err := headtail(c, pq)
+func eachRow(k *kong.Context, pq *parquetReader, headtail *HeadTailFlags, filter *ReflectFilter, do func(reflect.Value) error) error {
+	rng, err := headtail.rowRange(pq)
 	if err != nil {
 		return err
 	}
@@ -219,6 +223,15 @@ func eachRow(c *cli.Context, pq *parquetReader, do func(reflect.Value) error) er
 				return nil
 			}
 			return err
+		}
+		if filter != nil {
+			include, err := filter.Eval(v.Elem())
+			if err != nil {
+				return err
+			}
+			if !include {
+				continue
+			}
 		}
 		if err := do(v.Elem()); err != nil {
 			return err
@@ -314,33 +327,4 @@ func goLogicalTypeField(pf parquet.Field, path []string) reflect.StructField {
 		sf.Type = reflect.StructOf(goLogicalTypeFields(pf.Fields(), path))
 	}
 	return sf
-}
-
-func printSchema(c *cli.Context, name string) error {
-	return withReader(name, func(pq *parquetReader) (err error) {
-		switch {
-		case c.Bool("physical"):
-			_, err = fmt.Fprintln(c.App.Writer, pq.Schema().GoType())
-		case c.Bool("go"):
-			_, err = fmt.Fprintln(c.App.Writer, goLogicalType(pq.Schema()))
-		default:
-			_, err = fmt.Fprintln(c.App.Writer, pq.Schema())
-		}
-		return err
-	})
-}
-
-func printWhere(c *cli.Context, where ReflectFilter, name string) error {
-	return withReader(name, func(pq *parquetReader) error {
-		w := newFormatWriter(c, pq)
-		err := eachRow(c, pq, func(v reflect.Value) error {
-			if include, err := where.Eval(v); err != nil {
-				return err
-			} else if include {
-				return w.Write(v)
-			}
-			return nil
-		})
-		return errors.Join(err, w.Close())
-	})
 }

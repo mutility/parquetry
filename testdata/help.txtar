@@ -1,95 +1,85 @@
-# --help outputs trailing whitespace. Remove with sed before comparing.
-
 # help for --help
 exec parquetry --help
 ! stderr .
-stdin stdout
-exec sed -E 's/[[:space:]]+$//'
 cmp stdout help
 
 # help for -h
 exec parquetry -h
 ! stderr .
-stdin stdout
-exec sed -E 's/[[:space:]]+$//'
 cmp stdout help
 
 # help for cat
 exec parquetry cat --help
 ! stderr .
-stdin stdout
-exec sed -E 's/[[:space:]]+$//'
 cmp stdout help.cat
 
 # help for to
 exec parquetry to --help
 ! stderr .
-stdin stdout
-exec sed -E 's/[[:space:]]+$//'
 cmp stdout help.to
 
 # help for to csv
 exec parquetry to csv --help
 ! stderr .
-stdin stdout
-exec sed -E 's/[[:space:]]+$//'
 cmp stdout help.to.csv
-
 -- help --
-NAME:
-   parquetry - Tooling for parquet files
+Usage: parquetry <command> [flags]
 
-USAGE:
-   parquetry [global options] command [command options]
+Tooling for parquet files
 
-COMMANDS:
-   cat
-   schema
-   to
-   where
-   help, h  Shows a list of commands or help for one command
+Flags:
+  -h, --help    Show context-sensitive help.
 
-GLOBAL OPTIONS:
-   --help, -h  show help
+Commands:
+  cat         print a parquet file
+  schema      print a parquet schema
+  to csv      convert parquet to CSV
+  to json     convert parquet to JSON
+  to jsonl    convert parquet to JSON-Lines
+  where       filter a parquet file
+
+Run "parquetry <command> --help" for more information on a command.
 -- help.cat --
-NAME:
-   parquetry cat
+Usage: parquetry cat <file> ... [flags]
 
-USAGE:
-   parquetry cat [command options] [arguments...]
+print a parquet file
 
-OPTIONS:
-   --csv         output CSV (default: false)
-   --json        output JSON (default: false)
-   --jsonl       output JSON-Lines (default: false)
-   --head value  output only first N rows; skip if negative (default: 0)
-   --tail value  output only last N rows; skip if negative (default: 0)
-   --help, -h    show help
+Arguments:
+  <file> ...    parqet files to print
+
+Flags:
+  -h, --help           Show context-sensitive help.
+
+      --head=INT-64    include first +n or skip first -n records
+      --tail=INT-64    include last +n or skip last -n records
+
+Output Format:
+  --go       format as go (default)
+  --csv      format as CSV
+  --json     format as JSON
+  --jsonl    format as JSON-Lines
 -- help.to --
-NAME:
-   parquetry to
+Usage: parquetry to <command> [flags]
 
-USAGE:
-   parquetry to command [command options]
+convert parquet to...
 
-COMMANDS:
-   csv
-   json
-   jsonl
-   help, h  Shows a list of commands or help for one command
+Flags:
+  -h, --help    Show context-sensitive help.
 
-OPTIONS:
-   --head value  output only first N rows; skip if negative (default: 0)
-   --tail value  output only last N rows; skip if negative (default: 0)
-   --help, -h    show help
+Commands:
+  to csv      convert parquet to CSV
+  to json     convert parquet to JSON
+  to jsonl    convert parquet to JSON-Lines
 -- help.to.csv --
-NAME:
-   parquetry to csv
+Usage: parquetry to csv <file> ... [flags]
 
-USAGE:
-   parquetry to csv [command options] [arguments...]
+convert parquet to CSV
 
-OPTIONS:
-   --head value  output only first N rows; skip if negative (default: 0)
-   --tail value  output only last N rows; skip if negative (default: 0)
-   --help, -h    show help
+Arguments:
+  <file> ...    parqet files to print
+
+Flags:
+  -h, --help           Show context-sensitive help.
+
+      --head=INT-64    include first +n or skip first -n records
+      --tail=INT-64    include last +n or skip last -n records
