@@ -24,7 +24,7 @@ exec parquetry cat alphaw.parquet
 cmp stdout alphaw.want
 
 # alphaw in json
-exec parquetry cat --jsonl alphaw.parquet
+exec parquetry cat -f jsonl alphaw.parquet
 ! stderr .
 cmp stdout alphaw.json
 

@@ -8,8 +8,8 @@ import (
 
 type (
 	Date          int32
-	TimeMilliLoc  int64
-	TimeMilliUTC  int64
+	TimeMilliLoc  int32
+	TimeMilliUTC  int32
 	TimeMicroLoc  int64
 	TimeMicroUTC  int64
 	TimeNanoLoc   int64

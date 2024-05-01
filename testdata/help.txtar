@@ -14,14 +14,14 @@ exec parquetry cat --help
 cmp stdout help.cat
 
 # help for to
-exec parquetry to --help
+exec parquetry to -h
 ! stderr .
 cmp stdout help.to
 
 # help for to csv
 exec parquetry to csv --help
 ! stderr .
-cmp stdout help.to.csv
+cmp stdout help.to
 -- help --
 Usage: parquetry <command> [flags]
 
@@ -31,55 +31,37 @@ Flags:
   -h, --help    Show context-sensitive help.
 
 Commands:
-  cat         print a parquet file
-  schema      print a parquet schema
-  to csv      convert parquet to CSV
-  to json     convert parquet to JSON
-  to jsonl    convert parquet to JSON-Lines
-  where       filter a parquet file
+  cat       Print a parquet file
+  schema    Print a parquet schema
+  to        Convert parquet to...
+  where     Filter a parquet file
 
 Run "parquetry <command> --help" for more information on a command.
 -- help.cat --
 Usage: parquetry cat <file> ... [flags]
 
-print a parquet file
+Print a parquet file
 
 Arguments:
-  <file> ...    parqet files to print
+  <file> ...    Parquet files
 
 Flags:
   -h, --help           Show context-sensitive help.
 
-      --head=INT-64    include first +n or skip first -n records
-      --tail=INT-64    include last +n or skip last -n records
-
-Output Format:
-  --go       format as go (default)
-  --csv      format as CSV
-  --json     format as JSON
-  --jsonl    format as JSON-Lines
+  -f, --format="go"    Output as go, csv, json, or jsonl
+      --head=n|-n      Include first n or skip first -n records
+      --tail=n|-n      Include last n or skip last -n records
 -- help.to --
-Usage: parquetry to <command> [flags]
+Usage: parquetry to <format> <file> ... [flags]
 
-convert parquet to...
-
-Flags:
-  -h, --help    Show context-sensitive help.
-
-Commands:
-  to csv      convert parquet to CSV
-  to json     convert parquet to JSON
-  to jsonl    convert parquet to JSON-Lines
--- help.to.csv --
-Usage: parquetry to csv <file> ... [flags]
-
-convert parquet to CSV
+Convert parquet to...
 
 Arguments:
-  <file> ...    parqet files to print
+  <format>      Output as go, csv, json, or jsonl
+  <file> ...    Parquet files
 
 Flags:
-  -h, --help           Show context-sensitive help.
+  -h, --help         Show context-sensitive help.
 
-      --head=INT-64    include first +n or skip first -n records
-      --tail=INT-64    include last +n or skip last -n records
+      --head=n|-n    Include first n or skip first -n records
+      --tail=n|-n    Include last n or skip last -n records

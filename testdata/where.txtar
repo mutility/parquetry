@@ -13,7 +13,7 @@ exec parquetry where 'A eq ''d'' OR A eq ''f''' alphav.parquet
 cmp stdout alphav.want
 
 # alphav: in specified format
-exec parquetry where --jsonl 'A eq ''d'' OR A eq ''f''' alphav.parquet
+exec parquetry where -f jsonl 'A eq ''d'' OR A eq ''f''' alphav.parquet
 cmp stdout alphav.json
 
 # alphaw: include matching row

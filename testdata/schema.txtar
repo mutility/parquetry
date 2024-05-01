@@ -1,48 +1,111 @@
 # missing files should be reported and fail
 ! exec parquetry schema missing.parquet
 stderr 'missing.parquet: no such file or directory'
-! stdout .
+! exec parquetry schema -f l missing.parquet
+stderr 'missing.parquet: no such file or directory'
+! exec parquetry schema -f p missing.parquet
+stderr 'missing.parquet: no such file or directory'
+! exec parquetry schema -f logical missing.parquet
+stderr 'missing.parquet: no such file or directory'
+! exec parquetry schema -f physical missing.parquet
+stderr 'missing.parquet: no such file or directory'
+# invalid formats should be reported and fail
+! exec parquetry schema -f unknown alphav.parquet
+stderr '--format must be one of'
 
-# alphav should be vertical
+# alphav message
 exec parquetry schema alphav.parquet
 ! stderr .
-cmp stdout alphav.want
+cmp stdout alphav.msg
 
-# alphaw should be wide
+# alphav logical
+exec parquetry schema -f logical alphav.parquet
+cmp stdout alphav.log
+
+# alphav physical
+exec parquetry schema -f physical alphav.parquet
+cmp stdout alphav.phy
+
+# alphaw message
 exec parquetry schema alphaw.parquet
 ! stderr .
-cmp stdout alphaw.want
+cmp stdout alphaw.msg
 
-# alphamapv should be vertical
+# alphaw logical
+exec parquetry schema -f logical alphaw.parquet
+cmp stdout alphaw.log
+
+# alphamapv message
 exec parquetry schema alphamapv.parquet
 ! stderr .
-cmp stdout alphamapv.want
+cmp stdout alphamapv.msg
 
-# alphamapw should be wide
+# alphamapv logical
+exec parquetry schema -f logical alphamapv.parquet
+cmp stdout alphamapv.log
+
+# alphamapv physical
+exec parquetry schema -f physical alphamapv.parquet
+cmp stdout alphamapv.phy
+
+# alphamapw message
 exec parquetry schema alphamapw.parquet
 ! stderr .
-cmp stdout alphamapw.want
+cmp stdout alphamapw.msg
 
-# dates exercizes date storage
+# alphamapw logical
+exec parquetry schema -f logical alphamapw.parquet
+! stderr .
+cmp stdout alphamapw.log
+
+# dates message
 exec parquetry schema dates.parquet
 ! stderr .
-cmp stdout dates.want
+cmp stdout dates.msg
 
-# times should leverage most time storages
+# dates logical
+exec parquetry schema -f logical dates.parquet
+cmp stdout dates.log
+
+# dates physical
+exec parquetry schema -f physical dates.parquet
+cmp stdout dates.phy
+
+# times message
 exec parquetry schema times.parquet
 ! stderr .
-cmp stdout times.want
+cmp stdout times.msg
 
-# timestamps should leverage most time storages
+# times logical
+exec parquetry schema -f logical times.parquet
+cmp stdout times.log
+
+# times physical
+exec parquetry schema -f physical times.parquet
+cmp stdout times.phy
+
+# timestamps message
 exec parquetry schema timestamps.parquet
 ! stderr .
-cmp stdout timestamps.want
+cmp stdout timestamps.msg
 
--- alphav.want --
+# timestamps logical
+exec parquetry schema -f logical timestamps.parquet
+cmp stdout timestamps.log
+
+# timestamps physical
+exec parquetry schema -f physical timestamps.parquet
+cmp stdout timestamps.phy
+
+-- alphav.msg --
 message {
 	required binary A (STRING);
 }
--- alphaw.want --
+-- alphav.log --
+struct { A string }
+-- alphav.phy --
+struct { A []uint8 }
+-- alphaw.msg --
 message {
 	required binary A (STRING);
 	required binary B (STRING);
@@ -52,7 +115,9 @@ message {
 	required binary F (STRING);
 	required binary G (STRING);
 }
--- alphamapv.want --
+-- alphaw.log --
+struct { A string; B string; C string; D string; E string; F string; G string }
+-- alphamapv.msg --
 message {
 	required group M (MAP) {
 		repeated group key_value {
@@ -61,7 +126,11 @@ message {
 		}
 	}
 }
--- alphamapw.want --
+-- alphamapv.log --
+struct { M map[string]string }
+-- alphamapv.phy --
+struct { M struct { Key_value []struct { Key []uint8; Value []uint8 } } }
+-- alphamapw.msg --
 message {
 	required group M (MAP) {
 		repeated group key_value {
@@ -70,17 +139,27 @@ message {
 		}
 	}
 }
--- dates.want --
+-- alphamapw.log --
+struct { M map[string]string }
+-- dates.msg --
 message {
 	required int32 Date (DATE);
 }
--- times.want --
+-- dates.log --
+struct { Date main.Date }
+-- dates.phy --
+struct { Date int32 }
+-- times.msg --
 message {
 	required int32 Ms (TIME(isAdjustedToUTC=true,unit=MILLIS));
 	required int64 Us (TIME(isAdjustedToUTC=true,unit=MICROS));
 	required int64 Ns (TIME(isAdjustedToUTC=true,unit=NANOS));
 }
--- timestamps.want --
+-- times.log --
+struct { Ms main.TimeMilliUTC; Us main.TimeMicroUTC; Ns main.TimeNanoUTC }
+-- times.phy --
+struct { Ms int32; Us int64; Ns int64 }
+-- timestamps.msg --
 message {
 	required int64 Sms (TIMESTAMP(isAdjustedToUTC=true,unit=MILLIS));
 	required int64 Sus (TIMESTAMP(isAdjustedToUTC=true,unit=MICROS));
@@ -89,3 +168,7 @@ message {
 	required int64 Tus (TIMESTAMP(isAdjustedToUTC=true,unit=MICROS));
 	required int64 Tns (TIMESTAMP(isAdjustedToUTC=true,unit=NANOS));
 }
+-- timestamps.log --
+struct { Sms main.StampMilliUTC; Sus main.StampMicroUTC; Sns main.StampNanoUTC; Tms main.StampMilliUTC; Tus main.StampMicroUTC; Tns main.StampNanoUTC }
+-- timestamps.phy --
+struct { Sms int64; Sus int64; Sns int64; Tms int64; Tus int64; Tns int64 }
