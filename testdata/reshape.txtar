@@ -45,9 +45,9 @@ cmp stdout dates.want
 # times: subset
 exec parquetry reshape 'ms' times.parquet
 cmp stdout times-ms.want
-exec parquetry reshape 'us' times.parquet
+exec parquetry reshape 'us' times.parquet -f csv
 cmp stdout times-us.want
-exec parquetry reshape 'ns' times.parquet
+exec parquetry reshape 'ns' times.parquet -f jsonl
 cmp stdout times-ns.want
 
 # stamps subset, structify
@@ -55,11 +55,11 @@ exec parquetry reshape 'Sms' timestamps.parquet
 cmp stdout timestamps-sms.want
 exec parquetry reshape 'Tns' timestamps.parquet
 cmp stdout timestamps-tns.want
-exec parquetry reshape '(Sms, Sns) AS Numeric, (Tns, Tus) AS Timey' timestamps.parquet
+exec parquetry reshape '(Sms, Sns) AS numeric, (Tns, Tus) AS timey' timestamps.parquet
 cmp stdout timestamps-nt.want
-exec parquetry reshape -f jsonl '(Sms, Sns) AS Numeric, (Tns, Tus) AS Timey' timestamps.parquet
+exec parquetry reshape -f jsonl '(Sms, Sns) AS numeric, (Tns, Tus) AS timey' timestamps.parquet
 cmp stdout timestamps-nt.jsonl
-exec parquetry reshape -f csv '(Sms, Sns) AS Numeric, (Tns, Tus) AS Timey' timestamps.parquet
+exec parquetry reshape -f csv '(Sms, Sns) AS numeric, (Tns, Tus) AS timey' timestamps.parquet
 cmp stdout timestamps-nt.csv
 
 -- alphav.want --
@@ -110,11 +110,12 @@ a,b,c
 {Ms:03:25:45.678Z}
 {Ms:10:17:36.789Z}
 -- times-us.want --
-{Us:00:00:12.345678Z}
-{Us:00:02:03.456789Z}
+us
+00:00:12.345678Z
+00:02:03.456789Z
 -- times-ns.want --
-{Ns:00:00:00.012345678Z}
-{Ns:00:00:00.123456789Z}
+{"ns":"00:00:00.012345678Z"}
+{"ns":"00:00:00.123456789Z"}
 -- timestamps-sms.want --
 {Sms:2024-12-18T09:23:19.123Z}
 {Sms:2012-07-07T03:11:45.123Z}
@@ -128,11 +129,11 @@ a,b,c
 {Numeric:{Sms:2012-07-07T03:11:45.123Z Sns:2012-07-07T03:11:45.123456789Z} Timey:{Tns:2012-07-07T03:11:45.123456789Z Tus:2012-07-07T03:11:45.123456Z}}
 {Numeric:{Sms:2018-02-22T02:22:22.123Z Sns:2018-02-22T02:22:22.123456789Z} Timey:{Tns:2018-02-22T02:22:22.123456789Z Tus:2018-02-22T02:22:22.123456Z}}
 -- timestamps-nt.jsonl --
-{"Numeric":{"Sms":"2024-12-18T09:23:19.123Z","Sns":"2024-12-18T09:23:19.123456789Z"},"Timey":{"Tns":"2024-12-18T09:23:19.123456789Z","Tus":"2024-12-18T09:23:19.123456Z"}}
-{"Numeric":{"Sms":"2012-07-07T03:11:45.123Z","Sns":"2012-07-07T03:11:45.123456789Z"},"Timey":{"Tns":"2012-07-07T03:11:45.123456789Z","Tus":"2012-07-07T03:11:45.123456Z"}}
-{"Numeric":{"Sms":"2018-02-22T02:22:22.123Z","Sns":"2018-02-22T02:22:22.123456789Z"},"Timey":{"Tns":"2018-02-22T02:22:22.123456789Z","Tus":"2018-02-22T02:22:22.123456Z"}}
+{"numeric":{"Sms":"2024-12-18T09:23:19.123Z","Sns":"2024-12-18T09:23:19.123456789Z"},"timey":{"Tns":"2024-12-18T09:23:19.123456789Z","Tus":"2024-12-18T09:23:19.123456Z"}}
+{"numeric":{"Sms":"2012-07-07T03:11:45.123Z","Sns":"2012-07-07T03:11:45.123456789Z"},"timey":{"Tns":"2012-07-07T03:11:45.123456789Z","Tus":"2012-07-07T03:11:45.123456Z"}}
+{"numeric":{"Sms":"2018-02-22T02:22:22.123Z","Sns":"2018-02-22T02:22:22.123456789Z"},"timey":{"Tns":"2018-02-22T02:22:22.123456789Z","Tus":"2018-02-22T02:22:22.123456Z"}}
 -- timestamps-nt.csv --
-Numeric,Timey
+numeric,timey
 "{""Sms"":""2024-12-18T09:23:19.123Z"",""Sns"":""2024-12-18T09:23:19.123456789Z""}","{""Tns"":""2024-12-18T09:23:19.123456789Z"",""Tus"":""2024-12-18T09:23:19.123456Z""}"
 "{""Sms"":""2012-07-07T03:11:45.123Z"",""Sns"":""2012-07-07T03:11:45.123456789Z""}","{""Tns"":""2012-07-07T03:11:45.123456789Z"",""Tus"":""2012-07-07T03:11:45.123456Z""}"
 "{""Sms"":""2018-02-22T02:22:22.123Z"",""Sns"":""2018-02-22T02:22:22.123456789Z""}","{""Tns"":""2018-02-22T02:22:22.123456789Z"",""Tus"":""2018-02-22T02:22:22.123456Z""}"
