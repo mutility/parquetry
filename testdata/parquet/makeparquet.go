@@ -29,7 +29,9 @@ func main() {
 	)))
 
 	write("times.parquet", []struct {
-		Ms, Us, Ns int64
+		Ms int64 `parquet:"ms"`
+		Us int64 `parquet:"us"`
+		Ns int64 `parquet:"ns"`
 	}{
 		{
 			Ms: 12345678,
@@ -42,9 +44,9 @@ func main() {
 			Ns: 123456789,
 		},
 	}, parquet.NewSchema("", StructOf(
-		"Ms", parquet.Time(parquet.Millisecond),
-		"Us", parquet.Time(parquet.Microsecond),
-		"Ns", parquet.Time(parquet.Nanosecond),
+		"ms", parquet.Time(parquet.Millisecond),
+		"us", parquet.Time(parquet.Microsecond),
+		"ns", parquet.Time(parquet.Nanosecond),
 	)))
 
 	t1 := time.Date(2024, time.December, 18, 9, 23, 19, 123456789, time.UTC)

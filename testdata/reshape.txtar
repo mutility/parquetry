@@ -11,10 +11,14 @@ stderr 'invalid input'
 # alphav: rename
 exec parquetry reshape 'A as Z' alphav.parquet
 cmp stdout alphav.want
+exec parquetry reshape 'A as csv' alphav.parquet -f csv --filter 'A lt ''c'''
+cmp stdout alphav-lower.csv
+exec parquetry reshape 'A as json' alphav.parquet -f jsonl --filter 'A lt ''c'''
+cmp stdout alphav-lower.jsonl
 
 # alphav: rename, in specified format
 exec parquetry reshape -f jsonl 'A as Z' alphav.parquet
-cmp stdout alphav.json
+cmp stdout alphav.jsonl
 
 # alphaw: subset and rename, in specified formats
 exec parquetry reshape 'A, B as C, C as B' alphaw.parquet
@@ -39,11 +43,11 @@ exec parquetry reshape 'Date' dates.parquet
 cmp stdout dates.want
 
 # times: subset
-exec parquetry reshape 'Ms' times.parquet
+exec parquetry reshape 'ms' times.parquet
 cmp stdout times-ms.want
-exec parquetry reshape 'Us' times.parquet
+exec parquetry reshape 'us' times.parquet
 cmp stdout times-us.want
-exec parquetry reshape 'Ns' times.parquet
+exec parquetry reshape 'ns' times.parquet
 cmp stdout times-ns.want
 
 # stamps subset, structify
@@ -66,7 +70,7 @@ cmp stdout timestamps-nt.csv
 {Z:e}
 {Z:f}
 {Z:g}
--- alphav.json --
+-- alphav.jsonl --
 {"Z":"a"}
 {"Z":"b"}
 {"Z":"c"}
@@ -74,6 +78,13 @@ cmp stdout timestamps-nt.csv
 {"Z":"e"}
 {"Z":"f"}
 {"Z":"g"}
+-- alphav-lower.csv --
+csv
+a
+b
+-- alphav-lower.jsonl --
+{"json":"a"}
+{"json":"b"}
 -- alphaw.want --
 {A:a C:b B:c}
 -- alphaw.csv --

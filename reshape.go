@@ -117,8 +117,13 @@ func (s reStruct) Type(t reflect.Type) reflect.Type {
 func reStructFor(fields []reValue, t reflect.Type) reflect.Type {
 	sf := make([]reflect.StructField, len(fields))
 	for i, f := range fields {
-		sf[i].Name = reNameOf(f)
+		name := reNameOf(f)
+		sf[i].Name = name
 		sf[i].Type = f.Type(t)
+		if len(name) > 0 && name[:1] != strings.ToUpper(name[:1]) {
+			sf[i].Name = strings.ToUpper(name[:1]) + name[1:]
+			sf[i].Tag = reflect.StructTag(`parquet:"` + name + `" json:"` + name + `"`)
+		}
 	}
 	return reflect.StructOf(sf)
 }
@@ -155,7 +160,7 @@ func reTypeOf(t reflect.Type, source string) reflect.Type {
 	switch t.Kind() {
 	case reflect.Struct:
 		step, rest, _ := strings.Cut(source, ".")
-		tf, ok := t.FieldByName(step)
+		tf, ok := reTypeField(t, step)
 		if !ok {
 			return tf.Type
 		}
@@ -172,15 +177,43 @@ func reValueOf(v reflect.Value, source string) reflect.Value {
 	switch v.Kind() {
 	case reflect.Struct:
 		step, rest, _ := strings.Cut(source, ".")
-		return reValueOf(v.FieldByName(step), rest)
+		return reValueOf(reValueField(v, step), rest)
 	default:
 		return v
 	}
 }
 
+func reTypeField(t reflect.Type, name string) (reflect.StructField, bool) {
+	for f, F := 0, t.NumField(); f < F; f++ {
+		fld := t.Field(f)
+		if n, _, _ := strings.Cut(fld.Tag.Get("parquet"), ","); n != "" {
+			if n == name {
+				return fld, true
+			}
+		} else if fld.Name == name {
+			return fld, true
+		}
+	}
+	return reflect.StructField{}, false
+}
+
+func reValueField(v reflect.Value, name string) reflect.Value {
+	for f, F := 0, v.NumField(); f < F; f++ {
+		fld := v.Type().Field(f)
+		if n, _, _ := strings.Cut(fld.Tag.Get("parquet"), ","); n != "" {
+			if n == name {
+				return v.Field(f)
+			}
+		} else if fld.Name == name {
+			return v.Field(f)
+		}
+	}
+	return reflect.Value{}
+}
+
 func reLastDot(source string) string {
-	if n := strings.LastIndexByte(source, '.'); n > 0 {
-		return source[n+1:]
+	if name := strings.LastIndexByte(source, '.'); name > 0 {
+		return source[name+1:]
 	}
 	return source
 }

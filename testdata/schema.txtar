@@ -151,12 +151,12 @@ struct { Date main.Date }
 struct { Date int32 }
 -- times.msg --
 message {
-	required int32 Ms (TIME(isAdjustedToUTC=true,unit=MILLIS));
-	required int64 Us (TIME(isAdjustedToUTC=true,unit=MICROS));
-	required int64 Ns (TIME(isAdjustedToUTC=true,unit=NANOS));
+	required int32 ms (TIME(isAdjustedToUTC=true,unit=MILLIS));
+	required int64 us (TIME(isAdjustedToUTC=true,unit=MICROS));
+	required int64 ns (TIME(isAdjustedToUTC=true,unit=NANOS));
 }
 -- times.log --
-struct { Ms main.TimeMilliUTC; Us main.TimeMicroUTC; Ns main.TimeNanoUTC }
+struct { Ms main.TimeMilliUTC "json:\"ms\" parquet:\"ms\""; Us main.TimeMicroUTC "json:\"us\" parquet:\"us\""; Ns main.TimeNanoUTC "json:\"ns\" parquet:\"ns\"" }
 -- times.phy --
 struct { Ms int32; Us int64; Ns int64 }
 -- timestamps.msg --
