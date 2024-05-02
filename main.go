@@ -26,24 +26,32 @@ var cli struct {
 }
 
 func main() {
-	k, err := run()
-	k.FatalIfErrorf(err)
+	err := run()
+	if err != nil {
+		os.Exit(1)
+	}
 }
 
-func run() (*kong.Context, error) {
+func run() error {
 	k := kong.Parse(&cli,
 		kong.Name("parquetry"),
 		kong.Description("Tooling for parquet files"),
 		kong.ConfigureHelp(kong.HelpOptions{Compact: true}),
 		kong.Help(func(options kong.HelpOptions, ctx *kong.Context) error {
-			if strings.HasPrefix(ctx.Command(), "reshape") {
+			if strings.HasPrefix(ctx.Command(), "where") {
+				ctx.Selected().Detail = whereDetail
+			} else if strings.HasPrefix(ctx.Command(), "reshape") {
 				ctx.Selected().Detail = shapeDetail
 			}
 			return kong.DefaultHelpPrinter(options, ctx)
 		}),
+		kong.UsageOnError(),
 	)
-	err := k.Run()
-	return k, err
+	if err := k.Run(); err != nil {
+		k.Errorf("%v", err)
+		return err
+	}
+	return nil
 }
 
 type HeadTailFlags struct {
@@ -90,7 +98,7 @@ func (f *HeadTailFlags) rowRange(pq *parquetReader) (rng rowRange, err error) {
 
 type SchemaCmd struct {
 	Format string   `short:"f" default:"message" help:"Output schema as message or logical/physical struct" enum:"message,m,logical,l,physical,p"`
-	Files  []string `arg:"" name:"file" help:"Parquet files" type:"existingfile"`
+	Files  []string `arg:"" name:"file" help:"Parquet files" type:"file"`
 }
 
 func (c SchemaCmd) Run(k *kong.Context) error {
@@ -117,28 +125,52 @@ type RowWriteCloser interface {
 type CatCmd struct {
 	Format string `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
 	HeadTailFlags
-	Files []string `arg:"" name:"file" help:"Parquet files" type:"existingfile"`
+	Files []string `arg:"" name:"file" help:"Parquet files" type:"file"`
 }
 
 type ToCmd struct {
 	Format string `arg:"" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
 	HeadTailFlags
-	Files []string `arg:"" name:"file" help:"Parquet files" type:"existingfile"`
+	Files []string `arg:"" name:"file" help:"Parquet files" type:"file"`
 }
 
 type WhereCmd struct {
 	Format string   `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
 	Shape  string   `short:"x" help:"Transform into specified shape"`
 	Filter string   `arg:"" help:"Include rows matching this expression"`
-	Files  []string `arg:"" name:"file" help:"Parquet files" type:"existingfile"`
+	Files  []string `arg:"" name:"file" help:"Parquet files" type:"file"`
 }
 
 type ReshapeCmd struct {
 	Format string   `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
 	Filter string   `short:"m" help:"Include rows matching this expression"`
 	Shape  string   `arg:"" help:"Transform into specified shape"`
-	Files  []string `arg:"" name:"file" help:"Parquet files" type:"existingfile"`
+	Files  []string `arg:"" name:"file" help:"Parquet files" type:"file"`
 }
+
+const whereDetail = `
+Specify the desired filter per the Flexera filter language:
+
+Compare a dotted name to literals true/false/null, integers, dates, times, or strings.
+Values must match the type of the data to which they are compared.
+
+Comparisons include eq (equality), ne (inequality), lt (less), gt (greater),
+le (less or equal), ge (greater or equal), co (contains), nc (not contains),
+in (member of), ni (not member of).
+Group comparisons with optional (), and tweak with a leading NOT, adjoining AND or OR.
+
+Examples:
+  - a eq true OR b eq false
+  - a ne null
+  - a lt 'b'
+  - a le '2024-01-01T01:01:01.111Z'
+  - a gt '01:01:01.111Z'
+  - a ge '2024-01-01' AND a lt '2025-01-01'
+  - a co 'e' AND a nc 'f'
+  - a in [1, 2, 3]
+  - a ni ['d', 'e', 'f']
+  - NOT((a eq 1 AND b eq 2) OR (a eq 2 AND b eq 1))
+`
 
 const shapeDetail = `
 Specify the desired shape as a list of fields and groups.
