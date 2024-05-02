@@ -7,18 +7,16 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-
-	"github.com/parquet-go/parquet-go"
+	"strings"
 )
 
 func newCSVWriter(k *cliContext, pq *parquetReader) RowWriteCloser {
-	return &csvWriter{w: k.Stdout, s: pq.Schema()}
+	return &csvWriter{w: k.Stdout}
 }
 
 type csvWriter struct {
 	w    io.Writer
 	c    *csv.Writer
-	s    *parquet.Schema
 	vals []string
 	err  error
 }
@@ -29,19 +27,26 @@ func (w *csvWriter) Write(v reflect.Value) error {
 	}
 	if w.c == nil {
 		w.c = csv.NewWriter(w.w)
-		fields := w.s.Fields()
-		hdr := make([]string, len(fields))
-		for i, f := range fields {
-			hdr[i] = f.Name()
+		t := v.Type()
+		if t.Kind() != reflect.Struct {
+			return fmt.Errorf("csv: unsupported output %s", t)
+		}
+		hdr := make([]string, t.NumField())
+		for i := range hdr {
+			f := t.Field(i)
+			hdr[i] = f.Name
+			if n, _, _ := strings.Cut(f.Tag.Get("parquet"), ","); n != "" {
+				hdr[i] = n
+			}
 		}
 		if w.err = w.c.Write(hdr); w.err != nil {
 			return w.err
 		}
-		w.vals = make([]string, len(fields))
+		w.vals = make([]string, t.NumField())
 	}
 
 	if w.vals != nil {
-		for i := range w.s.Fields() {
+		for i := range w.vals {
 			switch v := v.Field(i); v.Kind() {
 			case reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8,
 				reflect.Uint, reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8,

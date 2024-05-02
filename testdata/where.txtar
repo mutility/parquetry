@@ -4,7 +4,7 @@ stderr 'missing.parquet: no such file or directory'
 ! stdout .
 
 # bad filters should be reported and fail
-! exec parquetry where 'a eq a' missing.parquet
+! exec parquetry where 'a eq a' alphav.parquet
 stderr .
 ! stdout .
 
@@ -19,6 +19,10 @@ cmp stdout alphav.json
 # alphaw: include matching row
 exec parquetry where 'A eq ''f'' OR A eq ''a''' alphaw.parquet
 cmp stdout alphaw.want
+
+# alphaw: reshaped
+exec parquetry where 'A eq ''a''' alphaw.parquet --shape B
+cmp stdout alphaw-b.want
 
 # alphamapv
 exec parquetry where 'M.B eq null OR M.B ne ''b''' alphamapv.parquet
@@ -96,6 +100,8 @@ cmp stdout timestamps-1.want
 {"A":"f"}
 -- alphaw.want --
 {A:a B:b C:c D:d E:e F:f G:g}
+-- alphaw-b.want --
+{B:b}
 -- alphamapv.want --
 {M:map[A:a]}
 {M:map[C:c]}

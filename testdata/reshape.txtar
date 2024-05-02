@@ -1,0 +1,127 @@
+# missing files should be reported and fail
+! exec parquetry reshape 'A' missing.parquet
+stderr 'missing.parquet: no such file or directory'
+! stdout .
+
+# bad filters should be reported and fail
+! exec parquetry reshape 'A 42 hello' alphav.parquet
+stderr 'invalid input'
+! stdout .
+
+# alphav: rename
+exec parquetry reshape 'A as Z' alphav.parquet
+cmp stdout alphav.want
+
+# alphav: rename, in specified format
+exec parquetry reshape -f jsonl 'A as Z' alphav.parquet
+cmp stdout alphav.json
+
+# alphaw: subset and rename, in specified formats
+exec parquetry reshape 'A, B as C, C as B' alphaw.parquet
+cmp stdout alphaw.want
+exec parquetry reshape 'A, B as C, C as B' alphaw.parquet -f csv
+cmp stdout alphaw.csv
+exec parquetry reshape 'A, B as C, C as B' alphaw.parquet -f json
+cmp stdout alphaw.json
+exec parquetry reshape 'A, B as C, C as B' alphaw.parquet -f jsonl
+cmp stdout alphaw.jsonl
+
+# alphamapv: rename map
+exec parquetry reshape 'M as Map' alphamapv.parquet
+cmp stdout alphamapv.want
+
+# alphamapw: rename map
+exec parquetry reshape 'M as KV' alphamapw.parquet
+cmp stdout alphamapw.want
+
+# dates: subset as self
+exec parquetry reshape 'Date' dates.parquet
+cmp stdout dates.want
+
+# times: subset
+exec parquetry reshape 'Ms' times.parquet
+cmp stdout times-ms.want
+exec parquetry reshape 'Us' times.parquet
+cmp stdout times-us.want
+exec parquetry reshape 'Ns' times.parquet
+cmp stdout times-ns.want
+
+# stamps subset, structify
+exec parquetry reshape 'Sms' timestamps.parquet
+cmp stdout timestamps-sms.want
+exec parquetry reshape 'Tns' timestamps.parquet
+cmp stdout timestamps-tns.want
+exec parquetry reshape '(Sms, Sns) AS Numeric, (Tns, Tus) AS Timey' timestamps.parquet
+cmp stdout timestamps-nt.want
+exec parquetry reshape -f jsonl '(Sms, Sns) AS Numeric, (Tns, Tus) AS Timey' timestamps.parquet
+cmp stdout timestamps-nt.jsonl
+exec parquetry reshape -f csv '(Sms, Sns) AS Numeric, (Tns, Tus) AS Timey' timestamps.parquet
+cmp stdout timestamps-nt.csv
+
+-- alphav.want --
+{Z:a}
+{Z:b}
+{Z:c}
+{Z:d}
+{Z:e}
+{Z:f}
+{Z:g}
+-- alphav.json --
+{"Z":"a"}
+{"Z":"b"}
+{"Z":"c"}
+{"Z":"d"}
+{"Z":"e"}
+{"Z":"f"}
+{"Z":"g"}
+-- alphaw.want --
+{A:a C:b B:c}
+-- alphaw.csv --
+A,C,B
+a,b,c
+-- alphaw.json --
+[
+  {"A":"a","C":"b","B":"c"}
+]
+-- alphaw.jsonl --
+{"A":"a","C":"b","B":"c"}
+-- alphamapv.want --
+{Map:map[A:a]}
+{Map:map[B:b]}
+{Map:map[C:c]}
+-- alphamapw.want --
+{KV:map[A:a B:b C:c]}
+-- dates.want --
+{Date:1970-05-04}
+{Date:1973-05-19}
+{Date:2003-10-20}
+-- times-ms.want --
+{Ms:03:25:45.678Z}
+{Ms:10:17:36.789Z}
+-- times-us.want --
+{Us:00:00:12.345678Z}
+{Us:00:02:03.456789Z}
+-- times-ns.want --
+{Ns:00:00:00.012345678Z}
+{Ns:00:00:00.123456789Z}
+-- timestamps-sms.want --
+{Sms:2024-12-18T09:23:19.123Z}
+{Sms:2012-07-07T03:11:45.123Z}
+{Sms:2018-02-22T02:22:22.123Z}
+-- timestamps-tns.want --
+{Tns:2024-12-18T09:23:19.123456789Z}
+{Tns:2012-07-07T03:11:45.123456789Z}
+{Tns:2018-02-22T02:22:22.123456789Z}
+-- timestamps-nt.want --
+{Numeric:{Sms:2024-12-18T09:23:19.123Z Sns:2024-12-18T09:23:19.123456789Z} Timey:{Tns:2024-12-18T09:23:19.123456789Z Tus:2024-12-18T09:23:19.123456Z}}
+{Numeric:{Sms:2012-07-07T03:11:45.123Z Sns:2012-07-07T03:11:45.123456789Z} Timey:{Tns:2012-07-07T03:11:45.123456789Z Tus:2012-07-07T03:11:45.123456Z}}
+{Numeric:{Sms:2018-02-22T02:22:22.123Z Sns:2018-02-22T02:22:22.123456789Z} Timey:{Tns:2018-02-22T02:22:22.123456789Z Tus:2018-02-22T02:22:22.123456Z}}
+-- timestamps-nt.jsonl --
+{"Numeric":{"Sms":"2024-12-18T09:23:19.123Z","Sns":"2024-12-18T09:23:19.123456789Z"},"Timey":{"Tns":"2024-12-18T09:23:19.123456789Z","Tus":"2024-12-18T09:23:19.123456Z"}}
+{"Numeric":{"Sms":"2012-07-07T03:11:45.123Z","Sns":"2012-07-07T03:11:45.123456789Z"},"Timey":{"Tns":"2012-07-07T03:11:45.123456789Z","Tus":"2012-07-07T03:11:45.123456Z"}}
+{"Numeric":{"Sms":"2018-02-22T02:22:22.123Z","Sns":"2018-02-22T02:22:22.123456789Z"},"Timey":{"Tns":"2018-02-22T02:22:22.123456789Z","Tus":"2018-02-22T02:22:22.123456Z"}}
+-- timestamps-nt.csv --
+Numeric,Timey
+"{""Sms"":""2024-12-18T09:23:19.123Z"",""Sns"":""2024-12-18T09:23:19.123456789Z""}","{""Tns"":""2024-12-18T09:23:19.123456789Z"",""Tus"":""2024-12-18T09:23:19.123456Z""}"
+"{""Sms"":""2012-07-07T03:11:45.123Z"",""Sns"":""2012-07-07T03:11:45.123456789Z""}","{""Tns"":""2012-07-07T03:11:45.123456789Z"",""Tus"":""2012-07-07T03:11:45.123456Z""}"
+"{""Sms"":""2018-02-22T02:22:22.123Z"",""Sns"":""2018-02-22T02:22:22.123456789Z""}","{""Tns"":""2018-02-22T02:22:22.123456789Z"",""Tus"":""2018-02-22T02:22:22.123456Z""}"

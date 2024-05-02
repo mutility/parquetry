@@ -22,6 +22,12 @@ cmp stdout help.to
 exec parquetry to csv --help
 ! stderr .
 cmp stdout help.to
+
+# help for reshape
+exec parquetry reshape --help
+! stderr .
+cmp stdout help.reshape
+
 -- help --
 Usage: parquetry <command> [flags]
 
@@ -31,10 +37,11 @@ Flags:
   -h, --help    Show context-sensitive help.
 
 Commands:
-  cat       Print a parquet file
-  schema    Print a parquet schema
-  to        Convert parquet to...
-  where     Filter a parquet file
+  cat        Print a parquet file
+  schema     Print a parquet schema
+  to         Convert parquet to...
+  where      Filter a parquet file
+  reshape    Reshape a parquet file
 
 Run "parquetry <command> --help" for more information on a command.
 -- help.cat --
@@ -65,3 +72,32 @@ Flags:
 
       --head=n|-n    Include first n or skip first -n records
       --tail=n|-n    Include last n or skip last -n records
+-- help.reshape --
+Usage: parquetry reshape <shape> <file> ... [flags]
+
+Reshape a parquet file
+
+Specify the desired shape as a list of fields and groups.
+  - Fields are a dotted name like a.b.c specifying their source
+  - Groups are a parenthesized list of fields and groups
+  - Groups must, and fields may specify a name with: AS $name
+
+For example, if the source has fields A,B,C,D,E,F,G:
+  - 'A,B,C' will take the first three columns
+  - 'G,F,E' will take the last three columns in reverse order
+  - 'A, A AS B' will output column A with names A and B
+  - '(A,C,E,G) AS Odd, (B,D,F) AS Even' will turn subsets into new groups
+
+If the source has a group Person with fields Name and Age:
+  - '(Person.Name, Person.Age) as Person' will mimic the original layout
+  - 'Person.Name, Person.Age' will flatten the nested group into Name,Age
+
+Arguments:
+  <shape>       Transform into specified shape
+  <file> ...    Parquet files
+
+Flags:
+  -h, --help             Show context-sensitive help.
+
+  -f, --format="go"      Output as go, csv, json, or jsonl
+  -m, --filter=STRING    Include rows matching this expression

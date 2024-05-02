@@ -18,10 +18,11 @@ type (
 )
 
 var cli struct {
-	Cat    CatCmd    `cmd:"" help:"Print a parquet file"`
-	Schema SchemaCmd `cmd:"" help:"Print a parquet schema"`
-	To     ToCmd     `cmd:"" help:"Convert parquet to..."`
-	Where  WhereCmd  `cmd:"" help:"Filter a parquet file"`
+	Cat     CatCmd     `cmd:"" help:"Print a parquet file"`
+	Schema  SchemaCmd  `cmd:"" help:"Print a parquet schema"`
+	To      ToCmd      `cmd:"" help:"Convert parquet to..."`
+	Where   WhereCmd   `cmd:"" help:"Filter a parquet file"`
+	Reshape ReshapeCmd `cmd:"" help:"Reshape a parquet file"`
 }
 
 func main() {
@@ -34,6 +35,12 @@ func run() (*kong.Context, error) {
 		kong.Name("parquetry"),
 		kong.Description("Tooling for parquet files"),
 		kong.ConfigureHelp(kong.HelpOptions{Compact: true}),
+		kong.Help(func(options kong.HelpOptions, ctx *kong.Context) error {
+			if strings.HasPrefix(ctx.Command(), "reshape") {
+				ctx.Selected().Detail = shapeDetail
+			}
+			return kong.DefaultHelpPrinter(options, ctx)
+		}),
 	)
 	err := k.Run()
 	return k, err
@@ -121,24 +128,54 @@ type ToCmd struct {
 
 type WhereCmd struct {
 	Format string   `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
+	Shape  string   `short:"x" help:"Transform into specified shape"`
 	Filter string   `arg:"" help:"Include rows matching this expression"`
 	Files  []string `arg:"" name:"file" help:"Parquet files" type:"existingfile"`
 }
 
+type ReshapeCmd struct {
+	Format string   `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
+	Filter string   `short:"m" help:"Include rows matching this expression"`
+	Shape  string   `arg:"" help:"Transform into specified shape"`
+	Files  []string `arg:"" name:"file" help:"Parquet files" type:"existingfile"`
+}
+
+const shapeDetail = `
+Specify the desired shape as a list of fields and groups.
+  - Fields are a dotted name like a.b.c specifying their source
+  - Groups are a parenthesized list of fields and groups
+  - Groups must, and fields may specify a name with: AS $name
+
+For example, if the source has fields A,B,C,D,E,F,G:
+  - 'A,B,C' will take the first three columns
+  - 'G,F,E' will take the last three columns in reverse order
+  - 'A, A AS B' will output column A with names A and B
+  - '(A,C,E,G) AS Odd, (B,D,F) AS Even' will turn subsets into new groups
+
+If the source has a group Person with fields Name and Age:
+  - '(Person.Name, Person.Age) as Person' will mimic the original layout
+  - 'Person.Name, Person.Age' will flatten the nested group into Name,Age
+`
+
 func (c CatCmd) Run(k *kong.Context) error {
-	return cat{"", c.Files, c.HeadTailFlags, c.Format}.Run(k)
+	return cat{"", "", c.Files, c.HeadTailFlags, c.Format}.Run(k)
 }
 
 func (c ToCmd) Run(k *kong.Context) error {
-	return cat{"", c.Files, c.HeadTailFlags, c.Format}.Run(k)
+	return cat{"", "", c.Files, c.HeadTailFlags, c.Format}.Run(k)
 }
 
 func (c WhereCmd) Run(k *kong.Context) error {
-	return cat{c.Filter, c.Files, HeadTailFlags{}, c.Format}.Run(k)
+	return cat{c.Filter, c.Shape, c.Files, HeadTailFlags{}, c.Format}.Run(k)
+}
+
+func (c ReshapeCmd) Run(k *kong.Context) error {
+	return cat{c.Filter, c.Shape, c.Files, HeadTailFlags{}, c.Format}.Run(k)
 }
 
 type cat struct {
 	Filter string
+	Shape  string
 	Files  []string
 	Range  HeadTailFlags
 	Format string
@@ -148,13 +185,15 @@ func (c cat) Run(k *kong.Context) error {
 	return eachFile(k, c.Files, func(k *kong.Context, name string) error {
 		return withReader(name, func(pq *parquetReader) error {
 			w := formatWriter(c.Format)(k, pq)
-			err := c.eachRow(k, pq, c.filter(w.Write))
+			err := c.eachRow(k, pq, c.filter(c.reshape(pq, w.Write)))
 			return errors.Join(err, w.Close())
 		})
 	})
 }
 
-func (c cat) filter(w func(reflect.Value) error) func(reflect.Value) error {
+type WriteFunc func(reflect.Value) error
+
+func (c cat) filter(w WriteFunc) WriteFunc {
 	if c.Filter == "" {
 		return w
 	}
@@ -170,6 +209,10 @@ func (c cat) filter(w func(reflect.Value) error) func(reflect.Value) error {
 		}
 		return nil
 	}
+}
+
+func (c cat) reshape(pq *parquetReader, w WriteFunc) WriteFunc {
+	return reshape(c.Shape, pq, w)
 }
 
 type FilenameAction func(c *kong.Context, name string) error
@@ -195,7 +238,7 @@ func withReader(name string, do func(*parquetReader) error) error {
 	return do(pq)
 }
 
-func (c cat) eachRow(k *kong.Context, pq *parquetReader, do func(reflect.Value) error) error {
+func (c cat) eachRow(k *kong.Context, pq *parquetReader, do WriteFunc) error {
 	rng, err := c.Range.rowRange(pq)
 	if err != nil {
 		return err

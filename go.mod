@@ -4,6 +4,7 @@ go 1.22.1
 
 require (
 	github.com/alecthomas/kong v0.9.0
+	github.com/alecthomas/participle/v2 v2.1.1
 	github.com/flexera/tabular v0.0.0-20240313132131-df322a4c6a80
 	github.com/parquet-go/parquet-go v0.20.1
 	github.com/rogpeppe/go-internal v1.12.0
