@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,10 +13,7 @@ import (
 	"github.com/parquet-go/parquet-go"
 )
 
-type (
-	cliContext    = kong.Context
-	parquetReader = parquet.Reader
-)
+type parquetReader = parquet.Reader
 
 var cli struct {
 	Cat     CatCmd     `cmd:"" help:"Print a parquet file"`
@@ -56,15 +54,6 @@ func run() error {
 	return nil
 }
 
-func formatWriter(format string) func(k *kong.Context, pq *parquetReader) RowWriteCloser {
-	return map[string]func(*kong.Context, *parquetReader) RowWriteCloser{
-		"go":    newGoWriter,
-		"csv":   newCSVWriter,
-		"json":  newJSONWriter,
-		"jsonl": newJSONLWriter,
-	}[format]
-}
-
 type SchemaCmd struct {
 	Format string   `short:"f" default:"message" help:"Output schema as message or logical/physical struct" enum:"message,m,logical,l,physical,p"`
 	Files  []string `arg:"" name:"file" help:"Parquet files" type:"file"`
@@ -86,7 +75,7 @@ func (c SchemaCmd) Run(k *kong.Context) error {
 	})
 }
 
-type RowWriteCloser interface {
+type WriteCloser interface {
 	Write(v reflect.Value) error
 	Close() error
 }
@@ -207,11 +196,34 @@ type cat struct {
 func (c cat) Run(k *kong.Context) error {
 	return eachFile(k, c.Files, func(k *kong.Context, name string) error {
 		return withReader(name, func(pq *parquetReader) error {
-			w := formatWriter(c.Format)(k, pq)
-			err := c.eachRow(k, pq, c.filter(c.reshape(pq, w.Write)))
-			return errors.Join(err, w.Close())
+			return withWriter(c.Format, k.Stdout, func(write WriteFunc) error {
+				return c.eachRow(k, pq, c.filter(c.reshape(pq, write)))
+			})
 		})
 	})
+}
+
+func withWriter(format string, w io.Writer, do func(WriteFunc) error) error {
+	switch format {
+	case "go":
+		return do(func(v reflect.Value) error {
+			_, err := fmt.Fprintf(w, "%+v\n", v)
+			return err
+		})
+	case "csv":
+		cw := &csvWriter{w: w}
+		err := do(cw.Write)
+		return errors.Join(err, cw.Close())
+	case "json":
+		jw := &jsonWriter{w: w}
+		err := do(jw.Write)
+		return errors.Join(err, jw.Close())
+	case "jsonl":
+		enc := json.NewEncoder(w)
+		enc.SetEscapeHTML(false)
+		return do(func(v reflect.Value) error { return enc.Encode(v.Interface()) })
+	}
+	return fmt.Errorf("format %s: %w", format, errors.ErrUnsupported)
 }
 
 type WriteFunc func(reflect.Value) error

@@ -10,10 +10,6 @@ import (
 	"strings"
 )
 
-func newCSVWriter(k *cliContext, pq *parquetReader) RowWriteCloser {
-	return &csvWriter{w: k.Stdout}
-}
-
 type csvWriter struct {
 	w    io.Writer
 	c    *csv.Writer

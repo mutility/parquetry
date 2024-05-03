@@ -7,10 +7,6 @@ import (
 	"reflect"
 )
 
-func newJSONWriter(c *cliContext, pq *parquetReader) RowWriteCloser {
-	return &jsonWriter{w: c.Stdout}
-}
-
 type jsonWriter struct {
 	w      io.Writer
 	b      bytes.Buffer
