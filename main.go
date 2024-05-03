@@ -37,14 +37,6 @@ func run() error {
 		kong.Name("parquetry"),
 		kong.Description("Tooling for parquet files"),
 		kong.ConfigureHelp(kong.HelpOptions{Compact: true}),
-		kong.Help(func(options kong.HelpOptions, ctx *kong.Context) error {
-			if strings.HasPrefix(ctx.Command(), "where") {
-				ctx.Selected().Detail = whereDetail
-			} else if strings.HasPrefix(ctx.Command(), "reshape") {
-				ctx.Selected().Detail = shapeDetail
-			}
-			return kong.DefaultHelpPrinter(options, ctx)
-		}),
 		kong.UsageOnError(),
 	)
 	if err := k.Run(); err != nil {
@@ -120,7 +112,8 @@ type ReshapeCmd struct {
 	Files  []string `arg:"" name:"file" help:"Parquet files" type:"file"`
 }
 
-const whereDetail = `
+func (WhereCmd) Help() string {
+	return `
 Specify the desired filter per the Flexera filter language:
 
 Compare a dotted name to literals true/false/null, integers, dates, times, or strings.
@@ -143,8 +136,10 @@ Examples:
   - a ni ['d', 'e', 'f']
   - NOT((a eq 1 AND b eq 2) OR (a eq 2 AND b eq 1))
 `
+}
 
-const shapeDetail = `
+func (ReshapeCmd) Help() string {
+	return `
 Specify the desired shape as a list of fields and groups.
   - Fields are a dotted name like a.b.c specifying their source
   - Groups are a parenthesized list of fields and groups
@@ -159,7 +154,8 @@ For example, if the source has fields A,B,C,D,E,F,G:
 If the source has a group Person with fields Name and Age:
   - '(Person.Name, Person.Age) as Person' will mimic the original layout
   - 'Person.Name, Person.Age' will flatten the nested group into Name,Age
-`
+  `
+}
 
 func (c CatCmd) Run(k *kong.Context) error {
 	return cat{"", "", c.Files, c.Head, c.Tail, c.Format}.Run(k)
