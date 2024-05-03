@@ -19,6 +19,8 @@ type (
 
 var cli struct {
 	Cat     CatCmd     `cmd:"" help:"Print a parquet file"`
+	Head    HeadCmd    `cmd:"" help:"Print (or skip) the beginning of a parquet file"`
+	Tail    TailCmd    `cmd:"" help:"Print (or skip) the ending of a parquet file"`
 	Schema  SchemaCmd  `cmd:"" help:"Print a parquet schema"`
 	To      ToCmd      `cmd:"" help:"Convert parquet to..."`
 	Where   WhereCmd   `cmd:"" help:"Filter a parquet file"`
@@ -54,11 +56,6 @@ func run() error {
 	return nil
 }
 
-type HeadTailFlags struct {
-	Head int64 `placeholder:"n|-n" help:"Include first n or skip first -n records" xor:"head,tail"`
-	Tail int64 `placeholder:"n|-n" help:"Include last n or skip last -n records" xor:"head,tail"`
-}
-
 func formatWriter(format string) func(k *kong.Context, pq *parquetReader) RowWriteCloser {
 	return map[string]func(*kong.Context, *parquetReader) RowWriteCloser{
 		"go":    newGoWriter,
@@ -66,34 +63,6 @@ func formatWriter(format string) func(k *kong.Context, pq *parquetReader) RowWri
 		"json":  newJSONWriter,
 		"jsonl": newJSONLWriter,
 	}[format]
-}
-
-type rowRange struct{ Start, Stop int64 }
-
-func (f *HeadTailFlags) rowRange(pq *parquetReader) (rng rowRange, err error) {
-	rows := pq.NumRows()
-	rng.Stop = rows
-	if f == nil {
-		return
-	}
-
-	switch {
-	case f.Head > 0:
-		rng.Stop = f.Head
-	case f.Head < 0:
-		rng.Start = -f.Head
-	case f.Tail > 0:
-		rng.Start = rng.Stop - f.Tail
-	case f.Tail < 0:
-		rng.Stop = rng.Stop + f.Tail
-	}
-	if rng.Start < 0 {
-		rng.Start = 0
-	}
-	if rng.Stop > rows {
-		rng.Stop = rows
-	}
-	return
 }
 
 type SchemaCmd struct {
@@ -123,15 +92,29 @@ type RowWriteCloser interface {
 }
 
 type CatCmd struct {
+	Format string   `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
+	Head   int64    `placeholder:"n|-n" help:"Include first n or skip first -n records" xor:"head,tail"`
+	Tail   int64    `placeholder:"n|-n" help:"Include last n or skip last -n records" xor:"head,tail"`
+	Files  []string `arg:"" name:"file" help:"Parquet files" type:"file"`
+}
+
+type HeadCmd struct {
 	Format string `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
-	HeadTailFlags
-	Files []string `arg:"" name:"file" help:"Parquet files" type:"file"`
+	Head   int64  `arg:"" name:"rows" placeholder:"n|-n" help:"Include first n or skip first -n records"`
+	File   string `arg:"" help:"Parquet file" type:"file"`
+}
+
+type TailCmd struct {
+	Format string `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
+	Tail   int64  `arg:"" name:"rows" placeholder:"n|-n" help:"Include last n or skip last -n records"`
+	File   string `arg:"" help:"Parquet file" type:"file"`
 }
 
 type ToCmd struct {
-	Format string `arg:"" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
-	HeadTailFlags
-	Files []string `arg:"" name:"file" help:"Parquet files" type:"file"`
+	Format string   `arg:"" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
+	Head   int64    `placeholder:"n|-n" help:"Include first n or skip first -n records" xor:"head,tail"`
+	Tail   int64    `placeholder:"n|-n" help:"Include last n or skip last -n records" xor:"head,tail"`
+	Files  []string `arg:"" name:"file" help:"Parquet files" type:"file"`
 }
 
 type WhereCmd struct {
@@ -190,27 +173,35 @@ If the source has a group Person with fields Name and Age:
 `
 
 func (c CatCmd) Run(k *kong.Context) error {
-	return cat{"", "", c.Files, c.HeadTailFlags, c.Format}.Run(k)
+	return cat{"", "", c.Files, c.Head, c.Tail, c.Format}.Run(k)
+}
+
+func (c HeadCmd) Run(k *kong.Context) error {
+	return cat{"", "", []string{c.File}, c.Head, 0, c.Format}.Run(k)
+}
+
+func (c TailCmd) Run(k *kong.Context) error {
+	return cat{"", "", []string{c.File}, 0, c.Tail, c.Format}.Run(k)
 }
 
 func (c ToCmd) Run(k *kong.Context) error {
-	return cat{"", "", c.Files, c.HeadTailFlags, c.Format}.Run(k)
+	return cat{"", "", c.Files, c.Head, c.Tail, c.Format}.Run(k)
 }
 
 func (c WhereCmd) Run(k *kong.Context) error {
-	return cat{c.Filter, c.Shape, c.Files, HeadTailFlags{}, c.Format}.Run(k)
+	return cat{c.Filter, c.Shape, c.Files, 0, 0, c.Format}.Run(k)
 }
 
 func (c ReshapeCmd) Run(k *kong.Context) error {
-	return cat{c.Filter, c.Shape, c.Files, HeadTailFlags{}, c.Format}.Run(k)
+	return cat{c.Filter, c.Shape, c.Files, 0, 0, c.Format}.Run(k)
 }
 
 type cat struct {
-	Filter string
-	Shape  string
-	Files  []string
-	Range  HeadTailFlags
-	Format string
+	Filter     string
+	Shape      string
+	Files      []string
+	Head, Tail int64
+	Format     string
 }
 
 func (c cat) Run(k *kong.Context) error {
@@ -271,17 +262,34 @@ func withReader(name string, do func(*parquetReader) error) error {
 }
 
 func (c cat) eachRow(k *kong.Context, pq *parquetReader, do WriteFunc) error {
-	rng, err := c.Range.rowRange(pq)
-	if err != nil {
-		return err
+	rows := pq.NumRows()
+	var start, stop int64 = 0, rows
+
+	switch {
+	case c.Head != 0 && c.Tail != 0:
+		return fmt.Errorf("only one of --head and --tail may be provided")
+	case c.Head > 0:
+		stop = c.Head
+	case c.Head < 0:
+		start = -c.Head
+	case c.Tail > 0:
+		start = rows - c.Tail
+	case c.Tail < 0:
+		stop = rows + c.Tail
+	}
+	if start < 0 {
+		start = 0
+	}
+	if stop > rows {
+		stop = rows
 	}
 	rowType := goLogicalType(pq.Schema())
 	v, z := reflect.New(rowType), reflect.Zero(rowType)
 
-	if rng.Start > 0 {
-		pq.SeekToRow(rng.Start)
+	if start > 0 {
+		pq.SeekToRow(start)
 	}
-	for i := rng.Start; i < rng.Stop; i++ {
+	for i := start; i < stop; i++ {
 		v.Elem().Set(z)
 		if err := pq.Read(v.Interface()); err != nil {
 			if err == io.EOF {

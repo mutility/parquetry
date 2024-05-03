@@ -13,6 +13,16 @@ exec parquetry cat --help
 ! stderr .
 cmp stdout help.cat
 
+# help for head
+exec parquetry head --help
+! stderr .
+cmp stdout help.head
+
+# help for tail
+exec parquetry tail --help
+! stderr .
+cmp stdout help.tail
+
 # help for schema
 exec parquetry schema --help
 ! stderr .
@@ -43,6 +53,31 @@ cmp stdout help
 stderr 'parquetry: error: expected "<file> ..."'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.cat
+
+! exec parquetry cat -
+stderr 'parquetry: error: open -: no such file or directory'
+trim stdout # errors include an extra line to separate the stderr message
+! stdout .
+
+! exec parquetry head
+stderr 'parquetry: error: expected "<rows> <file>"'
+trim stdout # errors include an extra line to separate the stderr message
+cmp stdout help.head
+
+! exec parquetry head 3
+stderr 'parquetry: error: expected "<file>"'
+trim stdout # errors include an extra line to separate the stderr message
+cmp stdout help.head
+
+! exec parquetry tail
+stderr 'parquetry: error: expected "<rows> <file>"'
+trim stdout # errors include an extra line to separate the stderr message
+cmp stdout help.tail
+
+! exec parquetry tail 3
+stderr 'parquetry: error: expected "<file>"'
+trim stdout # errors include an extra line to separate the stderr message
+cmp stdout help.tail
 
 ! exec parquetry cat -
 stderr 'parquetry: error: open -: no such file or directory'
@@ -110,6 +145,8 @@ Flags:
 
 Commands:
   cat        Print a parquet file
+  head       Print (or skip) the beginning of a parquet file
+  tail       Print (or skip) the ending of a parquet file
   schema     Print a parquet schema
   to         Convert parquet to...
   where      Filter a parquet file
@@ -130,6 +167,32 @@ Flags:
   -f, --format="go"    Output as go, csv, json, or jsonl
       --head=n|-n      Include first n or skip first -n records
       --tail=n|-n      Include last n or skip last -n records
+-- help.head --
+Usage: parquetry head <rows> <file> [flags]
+
+Print (or skip) the beginning of a parquet file
+
+Arguments:
+  <rows>    Include first n or skip first -n records
+  <file>    Parquet file
+
+Flags:
+  -h, --help           Show context-sensitive help.
+
+  -f, --format="go"    Output as go, csv, json, or jsonl
+-- help.tail --
+Usage: parquetry tail <rows> <file> [flags]
+
+Print (or skip) the ending of a parquet file
+
+Arguments:
+  <rows>    Include last n or skip last -n records
+  <file>    Parquet file
+
+Flags:
+  -h, --help           Show context-sensitive help.
+
+  -f, --format="go"    Output as go, csv, json, or jsonl
 -- help.schema --
 Usage: parquetry schema <file> ... [flags]
 
