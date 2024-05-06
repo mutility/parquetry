@@ -2,6 +2,7 @@ package call
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -38,12 +39,14 @@ type Environ struct {
 type command struct {
 	Name        string
 	Description string
+	Details     string
 	stringFlags map[string]Flag
 	runeFlags   map[rune]Flag
 	Commands    []*command
 	Positional  []Flag
 
-	runs func(context.Context, Environ) error
+	noHelp bool // suppress -h --help support
+	runs   func(context.Context, Environ) error
 }
 
 func (p *program) Command(name, description string) *command {
@@ -58,12 +61,13 @@ func (p *program) Parse(args []string) (*command, error) {
 	p.argv0 = args[0]
 
 	canFlag := true
+	showHelp := false
 	cur := &p.command
 	context := []*command{cur}
 
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
-		p.debug("parse arg", arg)
+		p.debug("rem args", args[i:])
 		if arg == "--" {
 			canFlag = false
 			continue
@@ -77,53 +81,113 @@ func (p *program) Parse(args []string) (*command, error) {
 		}
 
 		if canFlag && strings.HasPrefix(arg, "-") {
-			if flag, eqlArgs := matchFlags(context, arg); flag != nil {
-				p.debug("with eql", args[1+1:], eqlArgs)
-				consumed, err := p.parseFlagWithOverride(flag, args[i+1:], eqlArgs)
+			if flag, pass, cut := matchFlags(context, args[i:]); flag != nil {
+				p.debug("  flag", args[i:], "=>", pass)
+
+				consumed, err := 0, ErrMissingArgument
+				switch flag := flag.(type) {
+				case ManyParser:
+					consumed, err = flag.Parse(pass)
+				case SingleParser:
+					if len(pass) > 1 {
+						consumed, err = flag.Parse(pass[0], pass[1])
+					}
+				case PresenceParser:
+					consumed, err = flag.Parse(pass[0])
+				}
+				if cut {
+					consumed = 0
+				}
+
 				if err != nil {
+					p.debug(" ", pass, err)
 					return cur, err
 				}
 				p.debug("consumed flag", args[i:i+1+consumed])
 				i += consumed
 				continue
 			}
-			type dashAccepter interface {
-				acceptDash() bool
+			if !cur.noHelp && (arg == "-h" || arg == "--help") {
+				showHelp = true
+				continue
 			}
-			if pos, ok := cur.nextArg().(dashAccepter); !ok || strings.HasPrefix(arg, "--") || !pos.acceptDash() {
-				return cur, ErrArgument(args[i])
+			if !argAccepts(cur.nextArg(), arg) {
+				return cur, ErrArgUnexpected{args[i], cur}
 			}
 		}
 
 		if pos := cur.nextArg(); pos != nil {
-			consumed, err := pos.Parse(args[i:])
+			var consumed int
+			var err error
+			switch parser := pos.(type) {
+			case ManyParser:
+				// look ahead and break on any unconsumable --flags
+				pass := args[i:]
+				for ai, av := range pass[1:] {
+					if !argAccepts(pos, av) {
+						pass = pass[:ai+1]
+						break
+					}
+				}
+				consumed, err = parser.Parse(pass)
+				p.debug("consumed args (many)", helpDescribe(pos), pass, consumed, err)
+			case SingleParser:
+				consumed, err = parser.Parse("", args[i])
+				p.debug("consumed arg (single)", pos, []string{"", args[i]}, consumed)
+			}
 			if err != nil {
 				return cur, err
 			}
-			p.debug("consumed arg", args[i:i+consumed])
 			i += consumed - 1
+
 			continue
 		}
-		return cur, ErrArgument(args[i])
+		return cur, ErrArgUnexpected{args[i], cur}
 	}
 
-	if arg := cur.nextArg(); arg != nil {
-		return cur, ErrArgExpected{arg}
+	if showHelp {
+		if cur.noHelp {
+			return cur, ErrNoHelp
+		}
+		return helpCommand(p, cur), nil
 	}
 
+	if rem := cur.nextArgs(); rem != nil {
+		return cur, ErrArgsExpected{rem, cur}
+	}
 	return cur, nil
 }
 
-func (p *program) parseFlagWithOverride(flag Flag, args, override []string) (consumed int, err error) {
-	if len(override) > 0 {
-		_, err := flag.Parse(override)
-		return 0, err // cannot consume past override
+func argAccepts(f Flag, v string) bool {
+	if f == nil {
+		return false
 	}
-	return flag.Parse(args)
+
+	if !strings.HasPrefix(v, "-") {
+		return true
+	}
+
+	dash := f.dashes()
+	switch {
+	case strings.HasPrefix(v, "--"):
+		return false // --xyz must be matched by flag, or -- protected)
+	case dash&DashStdio != 0 && v == "-":
+		return true
+	case dash&DashNumber != 0 && isNumeric(v):
+		return true
+	}
+	return false
 }
 
 func (p *program) ReportError(err error) {
-	fmt.Fprintln(p.Stderr, p.Name+":", err)
+	if e, ok := err.(ErrArgsExpected); ok || errors.As(err, &e) {
+		writeUsage(p.Stdout, p, e.command)
+		fmt.Fprintln(p.Stdout)
+	} else if e, ok := err.(ErrArgUnexpected); ok || errors.As(err, &e) {
+		writeUsage(p.Stdout, p, e.command)
+		fmt.Fprintln(p.Stdout)
+	}
+	fmt.Fprintln(p.Stderr, p.Name+":", "error:", err)
 }
 
 func (p *program) debug(a ...any) {
@@ -144,15 +208,26 @@ func (p *program) RunCommand(ctx context.Context, cmd *command) error {
 	return cmd.runs(ctx, p.Environ)
 }
 
-type ErrArgument string
+var ErrNoHelp = fmt.Errorf("help unavailable")
 
-func (e ErrArgument) Error() string { return "unexpected: " + strconv.Quote(string(e)) }
+type ErrArgUnexpected struct {
+	a       string
+	command *command
+}
 
-type ErrArgExpected struct{ a Flag }
+func (e ErrArgUnexpected) Error() string { return "unexpected argument: " + strconv.Quote(e.a) }
 
-func (e ErrArgExpected) Error() string {
-	n, _ := e.a.ID()
-	return "expected: <" + n + ">"
+type ErrArgsExpected struct {
+	a       []Flag
+	command *command
+}
+
+func (e ErrArgsExpected) Error() string {
+	argsHelp := make([]string, len(e.a))
+	for i, f := range e.a {
+		argsHelp[i] = helpDescribe(f)
+	}
+	return `expected "` + strings.Join(argsHelp, " ") + `"`
 }
 
 type ErrCmdExpected struct{ cmds []*command }
@@ -179,6 +254,11 @@ func (c *command) Command(name, description string) *command {
 	return addCommand(&c.Commands, name, description)
 }
 
+func (c *command) Detail(help string) *command {
+	c.Details = help
+	return c
+}
+
 func (c *command) Runs(fn func(context.Context, Environ) error) *command {
 	c.runs = fn
 	return c
@@ -194,6 +274,11 @@ func addCommand(cmds *[]*command, name, description string) *command {
 }
 
 func (c *command) addFlag(flags string, f Flag) {
+	switch f.(type) {
+	case ManyParser, SingleParser, PresenceParser:
+	default:
+		panic(fmt.Sprintf("unsupported flag parser: %T", f))
+	}
 	if len(flags) == 0 {
 		name, _ := f.ID()
 		c.longFlag(name, f)
@@ -236,6 +321,11 @@ func (c *command) shortFlag(name rune, f Flag) {
 }
 
 func (c *command) addPos(a Flag) {
+	switch a.(type) {
+	case ManyParser, SingleParser:
+	default:
+		panic("unsupported positional parser")
+	}
 	c.Positional = append(c.Positional, a)
 }
 
@@ -257,6 +347,15 @@ func (c *command) nextArg() Flag {
 	return nil
 }
 
+func (c *command) nextArgs() []Flag {
+	for i, arg := range c.Positional {
+		if !arg.assigned() {
+			return c.Positional[i:]
+		}
+	}
+	return nil
+}
+
 func (c *command) reset() {
 	for _, arg := range c.Positional {
 		arg.reset()
@@ -266,24 +365,24 @@ func (c *command) reset() {
 	}
 }
 
-func matchFlags(commands []*command, arg string) (Flag, []string) {
+func matchFlags(commands []*command, args []string) (Flag, []string, bool) {
 	for i := len(commands); i > 0; i-- {
 		cmd := commands[i-1]
-		if name, ok := strings.CutPrefix(arg, "--"); ok {
+		if name, ok := strings.CutPrefix(args[0], "--"); ok {
 			name, val, eql := strings.Cut(name, "=")
 			if f, ok := cmd.stringFlags[name]; ok {
 				if eql {
-					return f, []string{val}
+					return f, []string{name, val}, true
 				}
-				return f, nil
+				return f, args, false
 			}
-		} else if name, ok := strings.CutPrefix(arg, "-"); ok {
+		} else if name, ok := strings.CutPrefix(args[0], "-"); ok && args[0] != "-" {
 			if f, ok := cmd.runeFlags[[]rune(name)[0]]; ok {
-				return f, nil
+				return f, args, false
 			}
 		}
 	}
-	return nil, nil
+	return nil, nil, false
 }
 
 type Command interface {

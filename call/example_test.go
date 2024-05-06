@@ -57,7 +57,7 @@ func ExampleProgram_command() {
 
 	// output:
 	// cmd <nil> A B C
-	// program unexpected: "--c" D E C
+	// program unexpected argument: "--c" D E C
 }
 
 func ExampleProgram_subcommand() {
@@ -98,9 +98,9 @@ func ExampleEnumerated_var() {
 	// 2: program color must be one of [red orange yellow green blue violet]; got brown yellow
 }
 
-func ExampleSingle_root() {
+func ExampleOption_root() {
 	p := call.Program("prog", "demonstrates a positional argument on the program")
-	v := call.Option[string]("v", "accepts one value").PosOn(p)
+	v := call.Option[string]("v", "accepts one value").PosOn("", p)
 
 	cmd, err := p.Parse(strings.Fields("prog"))
 	fmt.Println("0:", cmd.Name, err, []string{v.Value()})
@@ -111,15 +111,15 @@ func ExampleSingle_root() {
 	fmt.Println("2:", cmd.Name, err, []string{v.Value()})
 
 	// output:
-	// 0: prog expected: <v> []
+	// 0: prog expected "<v>" []
 	// 1: prog <nil> [arg]
-	// 2: prog unexpected: "argh" [argh]
+	// 2: prog unexpected argument: "argh" [argh]
 }
 
-func ExampleSingle_command() {
+func ExampleOption_command() {
 	p := call.Program("prog", "demonstrates a positional argument on the program")
 	c := p.Command("cmd", "a command")
-	v := call.Multi[string]("v", "accepts multiple values").PosOn(c)
+	v := call.Multi[string]("v", "accepts multiple values").PosOn("", c)
 
 	cmd, err := p.Parse(strings.Fields("prog"))
 	fmt.Println("0:", cmd.Name, err, v.Value())
@@ -133,7 +133,7 @@ func ExampleSingle_command() {
 
 	// output:
 	// 0: prog <nil> []
-	// 1: cmd expected: <v> []
+	// 1: cmd expected "<v> ..." []
 	// 2: cmd <nil> [arg]
 	// 3: cmd <nil> [arg1 arg2]
 }

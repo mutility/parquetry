@@ -2,16 +2,148 @@ package call
 
 import (
 	"errors"
+	"fmt"
+	"slices"
 	"strconv"
+)
+
+type Consumes int
+
+const (
+	ConsumesArg Consumes = iota
+	ConsumesName
+	ConsumesSlice
+)
+
+type Dash uint
+
+const (
+	DashNone   Dash = 0
+	DashNumber Dash = 1 << iota
+	DashStdio
 )
 
 var ErrMissingArgument = errors.New("missing")
 
 type Flag interface {
 	ID() (string, string)
-	Parse(args []string) (consumed int, err error)
+	DefaultString() string
+	Placeholder() string
+	PosName() string
+	See() []*command
+
+	consumes() Consumes
+	dashes() Dash
+	setDashes(Dash)
+	setParser(any)
 	assigned() bool
 	reset()
+	setPosName(string)
+	setSeeCmds([]*command)
+}
+
+// FlagSettings configure flags
+//
+//   - Parser[T](parse func(string) (T, error)): use parse to interpret arguments
+//   - DashNone|DashNumber|DashStdio: allow dashes in arguments; int-style options default to DashNumber
+//   - SeeCmd(cmd, ...): Refer to a command that has more detailed help for the flag
+type FlagSetting interface{ configureFlag(Flag) }
+
+func applyFlagSettings[T, P any](f flagDef[T, P], settings []FlagSetting) flagDef[T, P] {
+	for _, setting := range settings {
+		setting.configureFlag(&f)
+	}
+	if f.parser == nil {
+		panic(fmt.Sprintf("%s: needs parser", f.name))
+	}
+	return f
+}
+
+func (d Dash) configureFlag(f Flag) {
+	f.setDashes(d)
+}
+
+type parser[T any] func(string) (T, error)
+
+func (p parser[T]) configureFlag(f Flag) {
+	f.setParser(p)
+}
+
+// Parser specifies a parsing function for this flag.
+// This can be used for types without default parsers, such as to accept enum names on an integer values.
+func Parser[T any](p parser[T]) parser[T] { return parser[T](p) }
+
+// SeeCmd specifies one or more commands that have detailed documentation for this flag.
+func SeeCmd(cmds ...*command) seeCmds { return seeCmds(cmds) }
+
+type seeCmds []*command
+
+func (s seeCmds) configureFlag(f Flag) {
+	f.setSeeCmds(([]*command)(s))
+}
+
+type ManyParser interface {
+	Parse([]string) (int, error)
+}
+
+type SingleParser interface {
+	Parse(string, string) (int, error)
+}
+
+type PresenceParser interface {
+	Parse(string) (int, error)
+}
+
+type flagDef[T, P any] struct {
+	p             *T
+	set           bool
+	name          string
+	description   string
+	defaultValue  T
+	defaultString string
+	hasDefault    bool
+	placeholder   string
+	posName       string
+	consumption   Consumes
+	dashable      Dash
+	parser        parser[P]
+	seeCmds       []*command // commands with related help detail
+}
+
+func (f *flagDef[T, P]) String() string {
+	return fmt.Sprintf("%s=%v", f.name, *f.p)
+}
+
+func (f *flagDef[T, P]) ID() (string, string) {
+	return f.name, f.description
+}
+
+func (f *flagDef[T, P]) DefaultString() string   { return f.defaultString }
+func (f *flagDef[T, P]) Placeholder() string     { return f.placeholder }
+func (f *flagDef[T, P]) PosName() string         { return f.posName }
+func (f *flagDef[T, P]) DashNumber()             { f.dashable |= DashNumber }
+func (f *flagDef[T, P]) setPosName(n string)     { f.posName = n }
+func (f *flagDef[T, P]) consumes() Consumes      { return f.consumption }
+func (f *flagDef[T, P]) dashes() Dash            { return f.dashable }
+func (f *flagDef[T, P]) setDashes(d Dash)        { f.dashable = d }
+func (f *flagDef[T, P]) setParser(p any)         { f.parser = p.(parser[P]) }
+func (f *flagDef[T, P]) assigned() bool          { return f.set }
+func (f *flagDef[T, P]) reset()                  { f.set = false }
+func (f *flagDef[T, P]) See() []*command         { return slices.Clone(f.seeCmds) }
+func (f *flagDef[T, P]) setSeeCmds(c []*command) { f.seeCmds = c }
+func (f *flagDef[T, P]) setDefault(val T, repr string) {
+	*f.p = val
+	f.defaultValue, f.defaultString, f.hasDefault = val, repr, true
+	if repr == "" {
+		f.defaultString = fmt.Sprintf(`"%v"`, val)
+	}
+}
+
+func (f *flagDef[T, P]) Value() T {
+	if !f.set && f.hasDefault {
+		return f.defaultValue
+	}
+	return *f.p
 }
 
 func Toggle[T ~bool](name, description string) *toggle[T] {
@@ -20,36 +152,35 @@ func Toggle[T ~bool](name, description string) *toggle[T] {
 }
 
 func ToggleVar[T ~bool](p *T, name, description string) *toggle[T] {
-	return &toggle[T]{p, false, name, description, strconv.ParseBool}
+	return &toggle[T]{flagDef[T, T]{p: p, name: name, description: description}}
 }
 
-func (t *toggle[T]) ID() (string, string) { return t.Name, t.Description }
-func (t *toggle[T]) Value() T             { return *t.p }
-func (t *toggle[T]) assigned() bool       { return t.set }
-func (t *toggle[T]) reset()               { t.set = false }
-func (t *toggle[T]) Parse(args []string) (int, error) {
+func (t *toggle[T]) Default(val T, repr string) *toggle[T] {
+	t.setDefault(val, repr)
+	return t
+}
+
+func (t *toggle[T]) Hint(placeholder string) *toggle[T] {
+	t.placeholder = placeholder
+	return t
+}
+
+func (t *toggle[T]) Parse(string) (int, error) {
 	*t.p = !*t.p
 	t.set = true
 	return 0, nil
 }
 
 func (t *toggle[T]) FlagOn(cmds ...Command) *toggle[T] {
-	return t.FlagsOn("--"+t.Name, cmds...)
+	return flagsOn(t, "--"+t.name, cmds)
 }
 
 func (t *toggle[T]) FlagsOn(flags string, cmds ...Command) *toggle[T] {
-	for _, cmd := range cmds {
-		cmd.addFlag(flags, t)
-	}
-	return t
+	return flagsOn(t, flags, cmds)
 }
 
 type toggle[T ~bool] struct {
-	p           *T
-	set         bool
-	Name        string
-	Description string
-	parse       func(string) (bool, error)
+	flagDef[T, T]
 }
 
 type adder interface {
@@ -62,45 +193,82 @@ func Add[T adder](by T, name, description string) *add[T] {
 }
 
 func AddVar[T adder](p *T, by T, name, description string) *add[T] {
-	return &add[T]{p, by, false, name, description, strconv.ParseBool}
+	return &add[T]{
+		flagDef: flagDef[T, T]{p: p, name: name, description: description},
+		incr:    by,
+	}
 }
 
-func (a *add[T]) ID() (string, string) { return a.Name, a.Description }
-func (a *add[T]) Value() T             { return *a.p }
-func (a *add[T]) assigned() bool       { return a.set }
-func (a *add[T]) reset()               { a.set = false }
-func (a *add[T]) Parse(args []string) (int, error) {
+func (a *add[T]) Default(val T, repr string) *add[T] {
+	a.setDefault(val, repr)
+	return a
+}
+
+func (a *add[T]) Parse(string) (int, error) {
 	*a.p += a.incr
+	a.set = true
 	return 0, nil
 }
 
 func (a *add[T]) FlagOn(cmds ...Command) *add[T] {
-	return a.FlagsOn("--"+a.Name, cmds...)
+	return flagsOn(a, "--"+a.name, cmds)
 }
 
 func (a *add[T]) FlagsOn(flags string, cmds ...Command) *add[T] {
-	for _, cmd := range cmds {
-		cmd.addFlag(flags, a)
-	}
-	return a
+	return flagsOn(a, flags, cmds)
 }
 
 type add[T adder] struct {
-	p           *T
-	incr        T
-	set         bool
-	Name        string
-	Description string
-	parse       func(string) (bool, error)
+	flagDef[T, T]
+	incr T
 }
 
-func Option[T any](name, description string) *option[T] {
+// Option names and describes an option, and applies any specified settings.
+//
+// Settings must include a parser for types without built-in support.
+func Option[T any](name, description string, settings ...FlagSetting) *option[T] {
 	var dest T
-	return OptionVar(&dest, name, description)
+	return OptionVar(&dest, name, description, settings...)
 }
 
-func OptionVar[T any](p *T, name, description string) *option[T] {
-	return &option[T]{p: p, Name: name, Description: description, parse: parserFor[T]()}
+func OptionVar[T any](p *T, name, description string, settings ...FlagSetting) *option[T] {
+	return parserOptionVar(p, name, description, parserFor[T](), settings...)
+}
+
+// StringOption is like Option, but doesn't require an explicit parser for string-like parsing of non-string.
+func StringOption[T ~string](name, description string, settings ...FlagSetting) *option[T] {
+	var dest T
+	return parserOptionVar(&dest, name, description, parseString[T], settings...)
+}
+
+// IntOption is like Option, but doesn't require an explicit parser for int-like parsing of non-int.
+func IntOption[T ~int | ~int8 | ~int16 | ~int32 | ~int64](name, description string, settings ...FlagSetting) *option[T] {
+	var dest T
+	return parserOptionVar(&dest, name, description, parseInt[T], settings...)
+}
+
+// UintOption is like Option, but doesn't require an explicit parser for uint-like parsing of non-uint.
+func UintOption[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](name, description string, settings ...FlagSetting) *option[T] {
+	var dest T
+	return parserOptionVar(&dest, name, description, parseUint[T], settings...)
+}
+
+// FloatOption is like Option, but doesn't require an explicit parser for float-like parsing of non-float.
+func FloatOption[T ~float32 | ~float64](name, description string, settings ...FlagSetting) *option[T] {
+	var dest T
+	return parserOptionVar(&dest, name, description, parseFloat[T], settings...)
+}
+
+// BoolOption is like Option, but doesn't require an explicit parser for bool-like parsing of non-bool.
+func BoolOption[T ~bool](name, description string, settings ...FlagSetting) *option[T] {
+	var dest T
+	return parserOptionVar(&dest, name, description, parseBool[T], settings...)
+}
+
+func parserOptionVar[T any](p *T, name, description string, parser parser[T], settings ...FlagSetting) *option[T] {
+	return &option[T]{
+		flagDef: applyFlagSettings(flagDef[T, T]{p: p, name: name, description: description, parser: parser}, settings),
+	}
 }
 
 func Enumerated[T comparable](name, description string, values ...T) *option[T] {
@@ -123,23 +291,8 @@ func EnumeratedVar[T comparable](p *T, name, description string, values ...T) *o
 	return o
 }
 
-func (o *option[T]) ID() (string, string) { return o.Name, o.Description }
-func (o *option[T]) Value() T {
-	if !o.set && o.hasDefault {
-		return o.fallback
-	}
-	return *o.p
-}
-func (o *option[T]) Default(v T) *option[T]        { o.fallback, o.hasDefault = v, true; return o }
-func (o *option[T]) AcceptDash(ok bool) *option[T] { o.dashOK = ok; return o }
-func (o *option[T]) acceptDash() bool              { return o.dashOK }
-func (o *option[T]) assigned() bool                { return o.set }
-func (o *option[T]) reset()                        { o.set = false }
-func (o *option[T]) Parse(args []string) (int, error) {
-	if len(args) < 1 {
-		return 1, ErrMissingArgument
-	}
-	v, err := o.parse(args[0])
+func (o *option[T]) Parse(name, value string) (int, error) {
+	v, err := o.parser(value)
 	if err != nil {
 		return 0, err
 	}
@@ -153,56 +306,64 @@ func (o *option[T]) Parse(args []string) (int, error) {
 	return 1, nil
 }
 
+func (o *option[T]) Default(val T, repr string) *option[T] {
+	o.setDefault(val, repr)
+	return o
+}
+
+func (o *option[T]) Hint(placeholder string) *option[T] {
+	o.placeholder = placeholder
+	return o
+}
+
 func (o *option[T]) FlagOn(cmds ...Command) *option[T] {
-	return o.FlagsOn("--"+o.Name, cmds...)
+	return flagsOn(o, "--"+o.name, cmds)
 }
 
 func (o *option[T]) FlagsOn(flags string, cmds ...Command) *option[T] {
-	for _, cmd := range cmds {
-		cmd.addFlag(flags, o)
-	}
-	return o
+	return flagsOn(o, flags, cmds)
 }
 
-func (o *option[T]) PosOn(cmds ...Command) *option[T] {
-	for _, cmd := range cmds {
-		cmd.addPos(o)
-	}
-	return o
+func (o *option[T]) PosOn(name string, cmds ...Command) *option[T] {
+	return posOn(o, name, cmds)
 }
 
 type option[T any] struct {
-	p           *T
-	fallback    T
-	dashOK      bool // accept -* when parsing as a positionl arg
-	hasDefault  bool
-	set         bool
-	validate    func(T) error
-	Name        string
-	Description string
-	parse       func(string) (T, error)
+	flagDef[T, T]
+	validate func(T) error
 }
 
-func Multi[T any](name, description string) *multi[T] {
+func Multi[T any](name, description string, settings ...FlagSetting) *multi[T] {
 	var dest []T
-	return MultiVar(&dest, name, description)
+	return MultiVar(&dest, name, description, settings...)
 }
 
-func MultiVar[T any](p *[]T, name, description string) *multi[T] {
-	return &multi[T]{p, false, name, description, parserFor[T]()}
+func MultiVar[T any](p *[]T, name, description string, settings ...FlagSetting) *multi[T] {
+	return &multi[T]{
+		flagDef: applyFlagSettings(flagDef[[]T, T]{
+			p: p, name: name, description: description, consumption: ConsumesSlice,
+			parser: parserFor[T](),
+		}, settings),
+	}
 }
 
-func (m *multi[T]) ID() (string, string) { return m.Name, m.Description }
-func (m *multi[T]) Value() []T           { return *m.p }
-func (m *multi[T]) assigned() bool       { return m.set }
-func (m *multi[T]) reset()               { m.set = false }
+func (m *multi[T]) Default(val []T, repr string) *multi[T] {
+	m.setDefault(val, repr)
+	return m
+}
+
+func (m *multi[T]) Hint(placeholder string) *multi[T] {
+	m.placeholder = placeholder
+	return m
+}
+
 func (m *multi[T]) Parse(args []string) (int, error) {
 	if len(args) < 1 {
 		return 1, ErrMissingArgument
 	}
 	*m.p = make([]T, len(args))
 	for i := 0; i < len(args); i++ {
-		v, err := m.parse(args[i])
+		v, err := m.parser(args[i])
 		if err != nil {
 			return i - 1, err
 		}
@@ -212,24 +373,17 @@ func (m *multi[T]) Parse(args []string) (int, error) {
 	return len(args), nil
 }
 
-func (a *multi[T]) PosOn(cmds ...Command) *multi[T] {
-	for _, cmd := range cmds {
-		cmd.addPos(a)
-	}
-	return a
+func (m *multi[T]) PosOn(name string, cmds ...Command) *multi[T] {
+	return posOn(m, name, cmds)
 }
 
 type multi[T any] struct {
-	p           *[]T
-	set         bool
-	Name        string
-	Description string
-	parse       func(string) (T, error)
+	flagDef[[]T, T]
 }
 
 func parserFor[T any]() func(string) (T, error) {
 	var zero T
-	return map[any]any{
+	parse, _ := map[any]any{
 		int(0):     parseInt[int],
 		int8(0):    parseInt[int8],
 		int16(0):   parseInt[int16],
@@ -242,9 +396,10 @@ func parserFor[T any]() func(string) (T, error) {
 		uint64(0):  parseUint[uint64],
 		float32(0): parseFloat[float32],
 		float64(0): parseFloat[float64],
-		false:      strconv.ParseBool,
+		false:      parseBool[bool],
 		"":         parseString[string],
 	}[zero].(func(string) (T, error))
+	return parse
 }
 
 func bitsFor[T any]() int {
@@ -265,6 +420,11 @@ func bitsFor[T any]() int {
 	}[zero]
 }
 
+func parseBool[T ~bool](s string) (T, error) {
+	v, err := strconv.ParseBool(s)
+	return T(v), err
+}
+
 func parseInt[T ~int | ~int8 | ~int16 | ~int32 | ~int64](s string) (T, error) {
 	v, err := strconv.ParseInt(s, 10, bitsFor[T]())
 	return T(v), err
@@ -282,4 +442,26 @@ func parseFloat[T ~float32 | ~float64](s string) (T, error) {
 
 func parseString[T ~string](s string) (T, error) {
 	return T(s), nil
+}
+
+func flagsOn[T Flag](f T, flags string, cmds []Command) T {
+	for _, cmd := range cmds {
+		cmd.addFlag(flags, f)
+	}
+	return f
+}
+
+func posOn[T Flag](f T, name string, cmds []Command) T {
+	if name != "" {
+		f.setPosName(name)
+	}
+	for _, cmd := range cmds {
+		cmd.addPos(f)
+	}
+	return f
+}
+
+func isNumeric(s string) bool {
+	_, err := strconv.ParseInt(s, 10, 64)
+	return err == nil
 }
