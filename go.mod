@@ -3,7 +3,6 @@ module github.com/mutility/parquetry
 go 1.22.1
 
 require (
-	github.com/alecthomas/kong v0.9.0
 	github.com/alecthomas/participle/v2 v2.1.1
 	github.com/flexera/tabular v0.0.0-20240313132131-df322a4c6a80
 	github.com/parquet-go/parquet-go v0.20.1
@@ -11,6 +10,8 @@ require (
 )
 
 require (
+	github.com/alecthomas/assert/v2 v2.6.0 // indirect
+	github.com/alecthomas/repr v0.4.0 // indirect
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect

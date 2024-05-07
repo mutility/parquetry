@@ -43,94 +43,106 @@ exec parquetry reshape --help
 ! stderr .
 cmp stdout help.reshape
 
-# help on errors
+# help on errors: unknown
 ! exec parquetry fnord
-stderr 'parquetry: error: unexpected argument fnord'
+stderr 'parquetry: error: unexpected argument: "fnord"'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help
 
+# help on errors: cat
 ! exec parquetry cat
 stderr 'parquetry: error: expected "<file> ..."'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.cat
 
+# help on errors: cat -
 ! exec parquetry cat -
 stderr 'parquetry: error: open -: no such file or directory'
 trim stdout # errors include an extra line to separate the stderr message
 ! stdout .
 
+# help on errors: head
 ! exec parquetry head
 stderr 'parquetry: error: expected "<rows> <file>"'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.head
 
+# help on errors: head 3
 ! exec parquetry head 3
 stderr 'parquetry: error: expected "<file>"'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.head
 
+# help on errors: tail
 ! exec parquetry tail
 stderr 'parquetry: error: expected "<rows> <file>"'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.tail
 
-! exec parquetry tail 3
+# help on errors: tail -3
+! exec parquetry tail -3
 stderr 'parquetry: error: expected "<file>"'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.tail
 
-! exec parquetry cat -
-stderr 'parquetry: error: open -: no such file or directory'
-trim stdout # errors include an extra line to separate the stderr message
-! stdout .
-
+# help on errors: schema
 ! exec parquetry schema
 stderr 'parquetry: error: expected "<file> ..."'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.schema
 
+# help on errors: schema -
 ! exec parquetry schema -
 stderr 'parquetry: error: open -: no such file or directory'
 ! stdout .
 
+# help on errors: to
 ! exec parquetry to
 stderr 'parquetry: error: expected "<format> <file> ..."'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.to
 
+# help on errors: to csv
 ! exec parquetry to csv
 stderr 'parquetry: error: expected "<file> ..."'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.to
 
+# help on errors: to csv -
 ! exec parquetry to csv -
 stderr 'parquetry: error: open -: no such file or directory'
 ! stdout .
 
+# help on errors: where
 ! exec parquetry where
 stderr 'parquetry: error: expected "<filter> <file> ..."'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.where
 
+# help on errors: where x
 ! exec parquetry where x
 stderr 'parquetry: error: expected "<file> ..."'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.where
 
+# help on errors: where x -
 ! exec parquetry where x -
 stderr 'parquetry: error: open -: no such file or directory'
 ! stdout .
 
+# help on errors: reshape
 ! exec parquetry reshape
 stderr 'parquetry: error: expected "<shape> <file> ..."'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.reshape
 
+# help on errors: reshape x
 ! exec parquetry reshape x
 stderr 'parquetry: error: expected "<file> ..."'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.reshape
 
+# help on errors: reshape x -
 ! exec parquetry reshape x -
 stderr 'parquetry: error: open -: no such file or directory'
 ! stdout .
@@ -154,7 +166,7 @@ Commands:
 
 Run "parquetry <command> --help" for more information on a command.
 -- help.cat --
-Usage: parquetry cat <file> ... [flags]
+Usage: parquetry cat [flags] <file> ...
 
 Print a parquet file
 
@@ -163,38 +175,35 @@ Arguments:
 
 Flags:
   -h, --help           Show context-sensitive help.
-
   -f, --format="go"    Output as go, csv, json, or jsonl
-      --head=n|-n      Include first n or skip first -n records
-      --tail=n|-n      Include last n or skip last -n records
+      --head=n|-n      Include first n or skip first -n rows
+      --tail=n|-n      Include last n or skip last -n rows
 -- help.head --
-Usage: parquetry head <rows> <file> [flags]
+Usage: parquetry head [flags] <rows> <file>
 
 Print (or skip) the beginning of a parquet file
 
 Arguments:
-  <rows>    Include first n or skip first -n records
+  <rows>    Include first n or skip first -n rows
   <file>    Parquet file
 
 Flags:
   -h, --help           Show context-sensitive help.
-
   -f, --format="go"    Output as go, csv, json, or jsonl
 -- help.tail --
-Usage: parquetry tail <rows> <file> [flags]
+Usage: parquetry tail [flags] <rows> <file>
 
 Print (or skip) the ending of a parquet file
 
 Arguments:
-  <rows>    Include last n or skip last -n records
+  <rows>    Include last n or skip last -n rows
   <file>    Parquet file
 
 Flags:
   -h, --help           Show context-sensitive help.
-
   -f, --format="go"    Output as go, csv, json, or jsonl
 -- help.schema --
-Usage: parquetry schema <file> ... [flags]
+Usage: parquetry schema [flags] <file> ...
 
 Print a parquet schema
 
@@ -203,10 +212,9 @@ Arguments:
 
 Flags:
   -h, --help                Show context-sensitive help.
-
   -f, --format="message"    Output schema as message or logical/physical struct
 -- help.to --
-Usage: parquetry to <format> <file> ... [flags]
+Usage: parquetry to [flags] <format> <file> ...
 
 Convert parquet to...
 
@@ -216,11 +224,10 @@ Arguments:
 
 Flags:
   -h, --help         Show context-sensitive help.
-
-      --head=n|-n    Include first n or skip first -n records
-      --tail=n|-n    Include last n or skip last -n records
+      --head=n|-n    Include first n or skip first -n rows
+      --tail=n|-n    Include last n or skip last -n rows
 -- help.reshape --
-Usage: parquetry reshape <shape> <file> ... [flags]
+Usage: parquetry reshape [flags] <shape> <file> ...
 
 Reshape a parquet file
 
@@ -240,16 +247,16 @@ If the source has a group Person with fields Name and Age:
   - 'Person.Name, Person.Age' will flatten the nested group into Name,Age
 
 Arguments:
-  <shape>       Transform into specified shape
+  <shape>       Transform rows into specified shape
   <file> ...    Parquet files
 
 Flags:
   -h, --help             Show context-sensitive help.
-
+  -m, --filter=FILTER    Include rows matching this expression
+                         (See parquetry where --help)
   -f, --format="go"      Output as go, csv, json, or jsonl
-  -m, --filter=STRING    Include rows matching this expression
 -- help.where --
-Usage: parquetry where <filter> <file> ... [flags]
+Usage: parquetry where [flags] <filter> <file> ...
 
 Filter a parquet file
 
@@ -280,7 +287,7 @@ Arguments:
   <file> ...    Parquet files
 
 Flags:
-  -h, --help            Show context-sensitive help.
-
-  -f, --format="go"     Output as go, csv, json, or jsonl
-  -x, --shape=STRING    Transform into specified shape
+  -h, --help           Show context-sensitive help.
+  -f, --format="go"    Output as go, csv, json, or jsonl
+  -x, --shape=SHAPE    Transform rows into specified shape
+                       (See parquetry reshape --help)

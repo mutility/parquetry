@@ -14,7 +14,17 @@ exec parquetry cat --head 3 alphav.parquet
 cmp stdout alphav-head3.want
 
 # alphav --head -4 should be shorter
-exec parquetry cat --head=-4 alphav.parquet
+exec parquetry cat --head -4 alphav.parquet
+! stderr .
+cmp stdout alphav-tail3.want
+
+# head 3 is like cat --head 3
+exec parquetry head 3 alphav.parquet
+! stderr .
+cmp stdout alphav-head3.want
+
+# head 4 is like --head -4
+exec parquetry head -4 alphav.parquet
 ! stderr .
 cmp stdout alphav-tail3.want
 
@@ -25,6 +35,16 @@ cmp stdout alphav-tail3.want
 
 # alphav --tail -4 should be shorter
 exec parquetry cat --tail=-4 alphav.parquet
+! stderr .
+cmp stdout alphav-head3.want
+
+# tail 3 is like cat --tail 3
+exec parquetry tail 3 alphav.parquet
+! stderr .
+cmp stdout alphav-tail3.want
+
+# tail -4 is like cat --tail -4
+exec parquetry tail -4 alphav.parquet
 ! stderr .
 cmp stdout alphav-head3.want
 

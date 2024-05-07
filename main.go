@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,21 +10,12 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/alecthomas/kong"
 	"github.com/parquet-go/parquet-go"
+
+	"github.com/mutility/parquetry/call"
 )
 
 type parquetReader = parquet.Reader
-
-var cli struct {
-	Cat     CatCmd     `cmd:"" help:"Print a parquet file"`
-	Head    HeadCmd    `cmd:"" help:"Print (or skip) the beginning of a parquet file"`
-	Tail    TailCmd    `cmd:"" help:"Print (or skip) the ending of a parquet file"`
-	Schema  SchemaCmd  `cmd:"" help:"Print a parquet schema"`
-	To      ToCmd      `cmd:"" help:"Convert parquet to..."`
-	Where   WhereCmd   `cmd:"" help:"Filter a parquet file"`
-	Reshape ReshapeCmd `cmd:"" help:"Reshape a parquet file"`
-}
 
 func main() {
 	err := run()
@@ -33,36 +25,76 @@ func main() {
 }
 
 func run() error {
-	k := kong.Parse(&cli,
-		kong.Name("parquetry"),
-		kong.Description("Tooling for parquet files"),
-		kong.ConfigureHelp(kong.HelpOptions{Compact: true}),
-		kong.UsageOnError(),
-	)
-	if err := k.Run(); err != nil {
-		k.Errorf("%v", err)
+	p := call.Program("parquetry", "Tooling for parquet files")
+	catCmd := p.Command("cat", "Print a parquet file")
+	headCmd := p.Command("head", "Print (or skip) the beginning of a parquet file")
+	tailCmd := p.Command("tail", "Print (or skip) the ending of a parquet file")
+	schemaCmd := p.Command("schema", "Print a parquet schema")
+	toCmd := p.Command("to", "Convert parquet to...")
+	whereCmd := p.Command("where", "Filter a parquet file").Detail(filterHelp)
+	shapeCmd := p.Command("reshape", "Reshape a parquet file").Detail(shapeHelp)
+
+	out := call.Enumerated("format", "Output as go, csv, json, or jsonl", "go", "csv", "json", "jsonl").Default("go", "")
+	head := call.Option[int64]("head", "Include first n or skip first -n rows", call.DashNumber).Hint("n|-n")
+	tail := call.Option[int64]("tail", "Include last n or skip last -n rows", call.DashNumber).Hint("n|-n")
+	filter := call.Option[string]("filter", "Include rows matching this expression", call.SeeCmd(whereCmd)).Hint("FILTER")
+	shape := call.Option[string]("shape", "Transform rows into specified shape", call.SeeCmd(shapeCmd)).Hint("SHAPE")
+
+	out.FlagsOn("-f|--format", catCmd, headCmd, tailCmd, whereCmd, shapeCmd).PosOn("", toCmd)
+	head.FlagOn(catCmd, toCmd).PosOn("rows", headCmd)
+	tail.FlagOn(catCmd, toCmd).PosOn("rows", tailCmd)
+	filter.FlagsOn("-m|--filter", shapeCmd).PosOn("", whereCmd)
+	shape.FlagsOn("-x|--shape", whereCmd).PosOn("", shapeCmd)
+
+	schemaFmt := call.Enumerated[string]("format", "Output schema as message or logical/physical struct",
+		"message", "m", "logical", "l", "physical", "p").Default("message", "")
+	schemaFmt.FlagsOn("-f|--format", schemaCmd)
+
+	file := call.Option[string]("file", "Parquet file", call.DashStdio).PosOn("", headCmd, tailCmd)
+	files := call.Multi[string]("file", "Parquet files", call.DashStdio).PosOn("", catCmd, schemaCmd, toCmd, whereCmd, shapeCmd)
+	noFilter, noShape := call.Hardcoded(""), call.Hardcoded("")
+	catCmd.Runs(call.Handler6(printFile, out, head, tail, noFilter, noShape, files))
+	headCmd.Runs(call.Handler6(printFile, out, head, call.Hardcoded[int64](0), noFilter, noShape, call.Singleton(file)))
+	tailCmd.Runs(call.Handler6(printFile, out, call.Hardcoded[int64](0), tail, noFilter, noShape, call.Singleton(file)))
+	toCmd.Runs(call.Handler6(printFile, out, head, tail, noFilter, noShape, files))
+	whereCmd.Runs(call.Handler6(printFile, out, head, tail, filter, shape, files))
+	shapeCmd.Runs(call.Handler6(printFile, out, head, tail, filter, shape, files))
+	schemaCmd.Runs(call.Handler2(printSchema, schemaFmt, files))
+
+	cmd, err := p.Parse(os.Args)
+	if err != nil {
+		p.ReportError(err)
 		return err
 	}
-	return nil
+	err = p.RunCommand(context.Background(), cmd)
+	if err != nil {
+		p.ReportError(err)
+	}
+	return err
 }
 
-type SchemaCmd struct {
-	Format string   `short:"f" default:"message" help:"Output schema as message or logical/physical struct" enum:"message,m,logical,l,physical,p"`
-	Files  []string `arg:"" name:"file" help:"Parquet files" type:"file"`
-}
-
-func (c SchemaCmd) Run(k *kong.Context) error {
-	return eachFile(k, c.Files, func(k *kong.Context, name string) error {
+func printSchema(ctx context.Context, e call.Environ, format string, files []string) error {
+	return eachFile(files, func(name string) error {
 		return withReader(name, func(pq *parquetReader) (err error) {
-			switch c.Format {
+			switch format {
 			case "message":
-				_, err = fmt.Fprintln(k.Stdout, pq.Schema())
+				_, err = fmt.Fprintln(e.Stdout, pq.Schema())
 			case "physical", "p":
-				_, err = fmt.Fprintln(k.Stdout, pq.Schema().GoType())
+				_, err = fmt.Fprintln(e.Stdout, pq.Schema().GoType())
 			case "logical", "l":
-				_, err = fmt.Fprintln(k.Stdout, goLogicalType(pq.Schema()))
+				_, err = fmt.Fprintln(e.Stdout, goLogicalType(pq.Schema()))
 			}
 			return err
+		})
+	})
+}
+
+func printFile(ctx context.Context, e call.Environ, format string, head, tail int64, filter, shape string, files []string) error {
+	return eachFile(files, func(name string) error {
+		return withReader(name, func(pq *parquetReader) error {
+			return withWriter(format, e.Stdout, func(write WriteFunc) error {
+				return eachRow(pq, head, tail, makeFilter(filter, (reshape(shape, pq, write))))
+			})
 		})
 	})
 }
@@ -72,48 +104,7 @@ type WriteCloser interface {
 	Close() error
 }
 
-type CatCmd struct {
-	Format string   `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
-	Head   int64    `placeholder:"n|-n" help:"Include first n or skip first -n records" xor:"head,tail"`
-	Tail   int64    `placeholder:"n|-n" help:"Include last n or skip last -n records" xor:"head,tail"`
-	Files  []string `arg:"" name:"file" help:"Parquet files" type:"file"`
-}
-
-type HeadCmd struct {
-	Format string `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
-	Head   int64  `arg:"" name:"rows" placeholder:"n|-n" help:"Include first n or skip first -n records"`
-	File   string `arg:"" help:"Parquet file" type:"file"`
-}
-
-type TailCmd struct {
-	Format string `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
-	Tail   int64  `arg:"" name:"rows" placeholder:"n|-n" help:"Include last n or skip last -n records"`
-	File   string `arg:"" help:"Parquet file" type:"file"`
-}
-
-type ToCmd struct {
-	Format string   `arg:"" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
-	Head   int64    `placeholder:"n|-n" help:"Include first n or skip first -n records" xor:"head,tail"`
-	Tail   int64    `placeholder:"n|-n" help:"Include last n or skip last -n records" xor:"head,tail"`
-	Files  []string `arg:"" name:"file" help:"Parquet files" type:"file"`
-}
-
-type WhereCmd struct {
-	Format string   `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
-	Shape  string   `short:"x" help:"Transform into specified shape"`
-	Filter string   `arg:"" help:"Include rows matching this expression"`
-	Files  []string `arg:"" name:"file" help:"Parquet files" type:"file"`
-}
-
-type ReshapeCmd struct {
-	Format string   `short:"f" default:"go" enum:"go,csv,json,jsonl" help:"Output as go, csv, json, or jsonl"`
-	Filter string   `short:"m" help:"Include rows matching this expression"`
-	Shape  string   `arg:"" help:"Transform into specified shape"`
-	Files  []string `arg:"" name:"file" help:"Parquet files" type:"file"`
-}
-
-func (WhereCmd) Help() string {
-	return `
+const filterHelp = `
 Specify the desired filter per the Flexera filter language:
 
 Compare a dotted name to literals true/false/null, integers, dates, times, or strings.
@@ -136,10 +127,8 @@ Examples:
   - a ni ['d', 'e', 'f']
   - NOT((a eq 1 AND b eq 2) OR (a eq 2 AND b eq 1))
 `
-}
 
-func (ReshapeCmd) Help() string {
-	return `
+const shapeHelp = `
 Specify the desired shape as a list of fields and groups.
   - Fields are a dotted name like a.b.c specifying their source
   - Groups are a parenthesized list of fields and groups
@@ -154,50 +143,7 @@ For example, if the source has fields A,B,C,D,E,F,G:
 If the source has a group Person with fields Name and Age:
   - '(Person.Name, Person.Age) as Person' will mimic the original layout
   - 'Person.Name, Person.Age' will flatten the nested group into Name,Age
-  `
-}
-
-func (c CatCmd) Run(k *kong.Context) error {
-	return cat{"", "", c.Files, c.Head, c.Tail, c.Format}.Run(k)
-}
-
-func (c HeadCmd) Run(k *kong.Context) error {
-	return cat{"", "", []string{c.File}, c.Head, 0, c.Format}.Run(k)
-}
-
-func (c TailCmd) Run(k *kong.Context) error {
-	return cat{"", "", []string{c.File}, 0, c.Tail, c.Format}.Run(k)
-}
-
-func (c ToCmd) Run(k *kong.Context) error {
-	return cat{"", "", c.Files, c.Head, c.Tail, c.Format}.Run(k)
-}
-
-func (c WhereCmd) Run(k *kong.Context) error {
-	return cat{c.Filter, c.Shape, c.Files, 0, 0, c.Format}.Run(k)
-}
-
-func (c ReshapeCmd) Run(k *kong.Context) error {
-	return cat{c.Filter, c.Shape, c.Files, 0, 0, c.Format}.Run(k)
-}
-
-type cat struct {
-	Filter     string
-	Shape      string
-	Files      []string
-	Head, Tail int64
-	Format     string
-}
-
-func (c cat) Run(k *kong.Context) error {
-	return eachFile(k, c.Files, func(k *kong.Context, name string) error {
-		return withReader(name, func(pq *parquetReader) error {
-			return withWriter(c.Format, k.Stdout, func(write WriteFunc) error {
-				return c.eachRow(k, pq, c.filter(c.reshape(pq, write)))
-			})
-		})
-	})
-}
+`
 
 func withWriter(format string, w io.Writer, do func(WriteFunc) error) error {
 	switch format {
@@ -224,16 +170,16 @@ func withWriter(format string, w io.Writer, do func(WriteFunc) error) error {
 
 type WriteFunc func(reflect.Value) error
 
-func (c cat) filter(w WriteFunc) WriteFunc {
-	if c.Filter == "" {
+func makeFilter(filter string, w WriteFunc) WriteFunc {
+	if filter == "" {
 		return w
 	}
-	filter, err := ParseReflectFilter(c.Filter)
+	f, err := ParseReflectFilter(string(filter))
 	if err != nil {
 		return func(reflect.Value) error { return err }
 	}
 	return func(v reflect.Value) error {
-		if include, err := filter.Eval(v); err != nil {
+		if include, err := f.Eval(v); err != nil {
 			return err
 		} else if include {
 			return w(v)
@@ -242,15 +188,9 @@ func (c cat) filter(w WriteFunc) WriteFunc {
 	}
 }
 
-func (c cat) reshape(pq *parquetReader, w WriteFunc) WriteFunc {
-	return reshape(c.Shape, pq, w)
-}
-
-type FilenameAction func(c *kong.Context, name string) error
-
-func eachFile(k *kong.Context, files []string, do func(k *kong.Context, name string) error) error {
+func eachFile(files []string, do func(name string) error) error {
 	for _, name := range files {
-		if err := do(k, name); err != nil {
+		if err := do(name); err != nil {
 			return err
 		}
 	}
@@ -269,21 +209,21 @@ func withReader(name string, do func(*parquetReader) error) error {
 	return do(pq)
 }
 
-func (c cat) eachRow(k *kong.Context, pq *parquetReader, do WriteFunc) error {
+func eachRow(pq *parquetReader, head, tail int64, do WriteFunc) error {
 	rows := pq.NumRows()
 	var start, stop int64 = 0, rows
 
 	switch {
-	case c.Head != 0 && c.Tail != 0:
+	case head != 0 && tail != 0:
 		return fmt.Errorf("only one of --head and --tail may be provided")
-	case c.Head > 0:
-		stop = c.Head
-	case c.Head < 0:
-		start = -c.Head
-	case c.Tail > 0:
-		start = rows - c.Tail
-	case c.Tail < 0:
-		stop = rows + c.Tail
+	case head > 0:
+		stop = head
+	case head < 0:
+		start = -head
+	case tail > 0:
+		start = rows - tail
+	case tail < 0:
+		stop = rows + tail
 	}
 	if start < 0 {
 		start = 0
