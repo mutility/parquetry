@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"go/doc"
+	"go/doc/comment"
 	"io"
 	"slices"
 	"strings"
@@ -32,7 +32,7 @@ func writeUsage(w io.Writer, p *program, cmd *command) error {
 		usage = append(usage, "[flags]")
 	}
 	for _, pos := range cmd.Positional {
-		usage = append(usage, helpDescribe(pos))
+		usage = append(usage, pos.describe())
 	}
 	fmt.Fprintln(w, usage...)
 
@@ -42,18 +42,17 @@ func writeUsage(w io.Writer, p *program, cmd *command) error {
 	}
 	if len(cmd.Details) > 0 {
 		fmt.Fprintln(w)
-		doc.ToText(w, strings.TrimSpace(cmd.Details), "", "    ", 80)
+		_, _ = w.Write((&comment.Printer{
+			TextCodePrefix: "    ",
+			TextWidth:      80,
+		}).Text(new(comment.Parser).Parse(cmd.Details)))
 	}
 
 	if len(cmd.Positional) > 0 {
 		args := makeTable("Arguments:")
 		for _, pos := range cmd.Positional {
-			n, desc := pos.ID()
-			n = "<" + cmp.Or(pos.PosName(), n) + ">"
-			if _, ok := pos.(ManyParser); ok {
-				n += " ..."
-			}
-			args.Add(n, desc)
+			_, desc := pos.flag.ID()
+			args.Add(pos.describe(), desc)
 		}
 		args.Write(w)
 	}
@@ -136,7 +135,8 @@ func writeUsage(w io.Writer, p *program, cmd *command) error {
 		fmt.Fprintln(w, "\nRun \""+p.Name+" <command> --help\" for more information on a command.")
 	}
 
-	return nil
+	_, err := w.Write(nil)
+	return err
 }
 
 func makeTable(name string) table {
@@ -170,13 +170,4 @@ func (t *table) Write(w io.Writer) {
 			fmt.Fprintf(w, "  %-*s %s\n", longest+t.Pad, it[0], it[1])
 		}
 	}
-}
-
-func helpDescribe(pos Flag) string {
-	n, _ := pos.ID()
-	desc := "<" + cmp.Or(pos.PosName(), n) + ">"
-	if pos.consumes() == ConsumesSlice {
-		desc += " ..."
-	}
-	return desc
 }

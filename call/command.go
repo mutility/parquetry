@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-func Program(name, description string) *program {
-	return &program{
+func Program(name, description string, settings ...CommandSetting) *program {
+	p := &program{
 		command: command{
 			Name:        name,
 			Description: description,
@@ -22,6 +22,10 @@ func Program(name, description string) *program {
 			Stderr: os.Stderr,
 		},
 	}
+	for _, config := range settings {
+		config(&p.command)
+	}
+	return p
 }
 
 type program struct {
@@ -36,27 +40,79 @@ type Environ struct {
 	Stderr io.Writer
 }
 
+type namedFlag struct {
+	name string
+	flag posConsumer
+}
+
+func (nf namedFlag) describe() string {
+	desc := "<" + nf.name + ">"
+	if annotate, ok := nf.flag.(interface{ describe(string) string }); ok {
+		desc = annotate.describe(desc)
+	}
+	return desc
+}
+
+func (nf namedFlag) parsePosition(args []string) (int, error) {
+	return nf.flag.parsePosition(nf.name, args)
+}
+
 type command struct {
 	Name        string
 	Description string
 	Details     string
-	stringFlags map[string]Flag
-	runeFlags   map[rune]Flag
+	stringFlags map[string]flagConsumer
+	runeFlags   map[rune]flagConsumer
 	Commands    []*command
-	Positional  []Flag
+	Positional  []namedFlag
 
 	noHelp bool // suppress -h --help support
 	runs   func(context.Context, Environ) error
 }
 
-func (p *program) Command(name, description string) *command {
-	return addCommand(&p.Commands, name, description)
+type CommandSetting func(*command)
+
+type flagConsumer interface {
+	Flag
+	parseFlag(string) (int, error)
+}
+type posConsumer interface {
+	Flag
+	parsePosition(string, []string) (int, error)
+}
+
+func ByName(flag flagConsumer, names ...string) CommandSetting {
+	return func(c *command) {
+		if len(names) == 0 {
+			n, _ := flag.ID()
+			names = []string{n}
+		}
+		for _, name := range names {
+			c.addFlag(name, flag)
+		}
+	}
+}
+
+func ByOrder(flag posConsumer, names ...string) CommandSetting {
+	return func(c *command) {
+		switch len(names) {
+		case 0:
+			n, _ := flag.ID()
+			c.addPos(flag, n)
+		default:
+			c.addPos(flag, names[0])
+		}
+	}
+}
+
+func (p *program) Command(name, description string, settings ...CommandSetting) *command {
+	return addCommand(&p.Commands, name, description, settings)
 }
 
 func (p *program) Parse(args []string) (*command, error) {
 	p.debug("parse args", args)
 	if len(args) == 0 {
-		return nil, ErrMissingArgument
+		return nil, MissingArgsError{p, &p.command, nil, nil}
 	}
 	p.argv0 = args[0]
 
@@ -70,6 +126,7 @@ func (p *program) Parse(args []string) (*command, error) {
 		p.debug("rem args", args[i:])
 		if arg == "--" {
 			canFlag = false
+			p.debug("  dashdash")
 			continue
 		}
 
@@ -82,18 +139,15 @@ func (p *program) Parse(args []string) (*command, error) {
 
 		if canFlag && strings.HasPrefix(arg, "-") {
 			if flag, pass, cut := matchFlags(context, args[i:]); flag != nil {
-				p.debug("  flag", args[i:], "=>", pass)
+				p.debug("  flag", args[i:], "=>", pass, cut)
 
-				consumed, err := 0, ErrMissingArgument
-				switch flag := flag.(type) {
-				case ManyParser:
-					consumed, err = flag.Parse(pass)
-				case SingleParser:
-					if len(pass) > 1 {
-						consumed, err = flag.Parse(pass[0], pass[1])
-					}
-				case PresenceParser:
-					consumed, err = flag.Parse(pass[0])
+				consumed, err := 0, error(MissingArgsError{p, cur, nil, flag})
+				if cut && len(pass) > 0 {
+					consumed, err = flag.parseFlag(pass[0])
+				} else if presence, ok := flag.(interface{ parseName() error }); ok {
+					err = presence.parseName()
+				} else if len(pass) > 0 {
+					consumed, err = flag.parseFlag(pass[0])
 				}
 				if cut {
 					consumed = 0
@@ -103,7 +157,7 @@ func (p *program) Parse(args []string) (*command, error) {
 					p.debug(" ", pass, err)
 					return cur, err
 				}
-				p.debug("consumed flag", args[i:i+1+consumed])
+				p.debug("consumed flag", args[i:i+1+consumed], consumed, err)
 				i += consumed
 				continue
 			}
@@ -111,30 +165,25 @@ func (p *program) Parse(args []string) (*command, error) {
 				showHelp = true
 				continue
 			}
-			if !argAccepts(cur.nextArg(), arg) {
-				return cur, ErrArgUnexpected{args[i], cur}
+			if !argAccepts(cur.nextArg().flag, arg) {
+				return cur, UnexpectedArgError{args[i], p, cur}
 			}
 		}
 
-		if pos := cur.nextArg(); pos != nil {
-			var consumed int
-			var err error
-			switch parser := pos.(type) {
-			case ManyParser:
-				// look ahead and break on any unconsumable --flags
-				pass := args[i:]
-				for ai, av := range pass[1:] {
-					if !argAccepts(pos, av) {
-						pass = pass[:ai+1]
-						break
-					}
+		if pos := cur.nextArg(); pos.flag != nil {
+			// look ahead and break on any unconsumable --flags
+			pass := args[i:]
+			for ai, av := range pass {
+				if !argAccepts(pos.flag, av) {
+					pass = pass[:ai]
+					break
 				}
-				consumed, err = parser.Parse(pass)
-				p.debug("consumed args (many)", helpDescribe(pos), pass, consumed, err)
-			case SingleParser:
-				consumed, err = parser.Parse("", args[i])
-				p.debug("consumed arg (single)", pos, []string{"", args[i]}, consumed)
 			}
+			if len(pass) == 0 {
+				return cur, MissingArgsError{p: p, cmd: cur, named: []namedFlag{{pos.name, pos.flag}}}
+			}
+			consumed, err := pos.parsePosition(pass)
+			p.debug("consumed args", strconv.Quote(pos.describe()), pass, consumed, err)
 			if err != nil {
 				return cur, err
 			}
@@ -142,7 +191,7 @@ func (p *program) Parse(args []string) (*command, error) {
 
 			continue
 		}
-		return cur, ErrArgUnexpected{args[i], cur}
+		return cur, UnexpectedArgError{args[i], p, cur}
 	}
 
 	if showHelp {
@@ -153,7 +202,7 @@ func (p *program) Parse(args []string) (*command, error) {
 	}
 
 	if rem := cur.nextArgs(); rem != nil {
-		return cur, ErrArgsExpected{rem, cur}
+		return cur, MissingArgsError{p, cur, rem, nil}
 	}
 	return cur, nil
 }
@@ -163,7 +212,7 @@ func argAccepts(f Flag, v string) bool {
 		return false
 	}
 
-	if !strings.HasPrefix(v, "-") {
+	if v == "-" || !strings.HasPrefix(v, "-") {
 		return true
 	}
 
@@ -171,8 +220,6 @@ func argAccepts(f Flag, v string) bool {
 	switch {
 	case strings.HasPrefix(v, "--"):
 		return false // --xyz must be matched by flag, or -- protected)
-	case dash&DashStdio != 0 && v == "-":
-		return true
 	case dash&DashNumber != 0 && isNumeric(v):
 		return true
 	}
@@ -180,11 +227,11 @@ func argAccepts(f Flag, v string) bool {
 }
 
 func (p *program) ReportError(err error) {
-	if e, ok := err.(ErrArgsExpected); ok || errors.As(err, &e) {
-		writeUsage(p.Stdout, p, e.command)
+	if e, ok := err.(MissingArgsError); ok || errors.As(err, &e) {
+		_ = writeUsage(p.Stdout, p, e.cmd)
 		fmt.Fprintln(p.Stdout)
-	} else if e, ok := err.(ErrArgUnexpected); ok || errors.As(err, &e) {
-		writeUsage(p.Stdout, p, e.command)
+	} else if e, ok := err.(UnexpectedArgError); ok || errors.As(err, &e) {
+		_ = writeUsage(p.Stdout, p, e.cmd)
 		fmt.Fprintln(p.Stdout)
 	}
 	fmt.Fprintln(p.Stderr, p.Name+":", "error:", err)
@@ -210,24 +257,40 @@ func (p *program) RunCommand(ctx context.Context, cmd *command) error {
 
 var ErrNoHelp = fmt.Errorf("help unavailable")
 
-type ErrArgUnexpected struct {
-	a       string
-	command *command
+type UnexpectedArgError struct {
+	a   string
+	p   *program
+	cmd *command
 }
 
-func (e ErrArgUnexpected) Error() string { return "unexpected argument: " + strconv.Quote(e.a) }
-
-type ErrArgsExpected struct {
-	a       []Flag
-	command *command
-}
-
-func (e ErrArgsExpected) Error() string {
-	argsHelp := make([]string, len(e.a))
-	for i, f := range e.a {
-		argsHelp[i] = helpDescribe(f)
+func (e UnexpectedArgError) Error() string {
+	if e.cmd != nil && e.cmd != &e.p.command {
+		return e.cmd.Name + ": unexpected argument: " + strconv.Quote(e.a)
 	}
-	return `expected "` + strings.Join(argsHelp, " ") + `"`
+	return "unexpected argument: " + strconv.Quote(e.a)
+}
+
+type MissingArgsError struct {
+	p     *program
+	cmd   *command
+	named []namedFlag
+	flag  Flag
+}
+
+func (e MissingArgsError) Error() string {
+	argsHelp := make([]string, len(e.named))
+	for i, f := range e.named {
+		argsHelp[i] = f.describe()
+	}
+	if e.flag != nil {
+		n, _ := e.flag.ID()
+		argsHelp = append(argsHelp, n)
+	}
+	msg := `expected "` + strings.Join(argsHelp, " ") + `"`
+	if e.cmd != nil && e.cmd != &e.p.command {
+		msg = e.cmd.Name + ": " + msg
+	}
+	return msg
 }
 
 type ErrCmdExpected struct{ cmds []*command }
@@ -240,7 +303,7 @@ func (e ErrCmdExpected) Error() string {
 	return "expected one of: " + strings.Join(names, ", ")
 }
 
-type ErrNotInEnum[T comparable] struct {
+type ErrNotInEnum[T any] struct {
 	Name string
 	Got  T
 	Want []T
@@ -250,12 +313,17 @@ func (e ErrNotInEnum[T]) Error() string {
 	return fmt.Sprintf("%s must be one of %v; got %v", e.Name, e.Want, e.Got)
 }
 
-func (c *command) Command(name, description string) *command {
-	return addCommand(&c.Commands, name, description)
+func (c *command) Command(name, description string, settings ...CommandSetting) *command {
+	return addCommand(&c.Commands, name, description, settings)
 }
 
-func (c *command) Detail(help string) *command {
+// Specify details for a command.
+// Optionally specify flags that will refer to this command for its details.
+func (c *command) Detail(help string, flags ...Flag) *command {
 	c.Details = help
+	for _, f := range flags {
+		f.seeAlso(c)
+	}
 	return c
 }
 
@@ -264,21 +332,19 @@ func (c *command) Runs(fn func(context.Context, Environ) error) *command {
 	return c
 }
 
-func addCommand(cmds *[]*command, name, description string) *command {
+func addCommand(cmds *[]*command, name, description string, settings []CommandSetting) *command {
 	cmd := &command{
 		Name:        name,
 		Description: description,
 	}
 	*cmds = append(*cmds, cmd)
+	for _, config := range settings {
+		config(cmd)
+	}
 	return cmd
 }
 
-func (c *command) addFlag(flags string, f Flag) {
-	switch f.(type) {
-	case ManyParser, SingleParser, PresenceParser:
-	default:
-		panic(fmt.Sprintf("unsupported flag parser: %T", f))
-	}
+func (c *command) addFlag(flags string, f flagConsumer) {
 	if len(flags) == 0 {
 		name, _ := f.ID()
 		c.longFlag(name, f)
@@ -300,33 +366,28 @@ func (c *command) addFlag(flags string, f Flag) {
 	}
 }
 
-func (c *command) longFlag(name string, f Flag) {
+func (c *command) longFlag(name string, f flagConsumer) {
 	if _, ok := c.stringFlags[name]; ok {
 		panic(c.Name + ": multiple long definitions for " + name)
 	}
 	if c.stringFlags == nil {
-		c.stringFlags = make(map[string]Flag)
+		c.stringFlags = make(map[string]flagConsumer)
 	}
 	c.stringFlags[name] = f
 }
 
-func (c *command) shortFlag(name rune, f Flag) {
+func (c *command) shortFlag(name rune, f flagConsumer) {
 	if _, ok := c.runeFlags[name]; ok {
 		panic(c.Name + ": multiple short definitions for " + string(name))
 	}
 	if c.runeFlags == nil {
-		c.runeFlags = make(map[rune]Flag)
+		c.runeFlags = make(map[rune]flagConsumer)
 	}
 	c.runeFlags[name] = f
 }
 
-func (c *command) addPos(a Flag) {
-	switch a.(type) {
-	case ManyParser, SingleParser:
-	default:
-		panic("unsupported positional parser")
-	}
-	c.Positional = append(c.Positional, a)
+func (c *command) addPos(a posConsumer, name string) {
+	c.Positional = append(c.Positional, namedFlag{name, a})
 }
 
 func (c *command) matchCommand(arg string) *command {
@@ -338,18 +399,18 @@ func (c *command) matchCommand(arg string) *command {
 	return nil
 }
 
-func (c *command) nextArg() Flag {
+func (c *command) nextArg() namedFlag {
 	for _, arg := range c.Positional {
-		if !arg.assigned() {
+		if !arg.flag.assigned() {
 			return arg
 		}
 	}
-	return nil
+	return namedFlag{}
 }
 
-func (c *command) nextArgs() []Flag {
+func (c *command) nextArgs() []namedFlag {
 	for i, arg := range c.Positional {
-		if !arg.assigned() {
+		if !arg.flag.assigned() {
 			return c.Positional[i:]
 		}
 	}
@@ -358,27 +419,27 @@ func (c *command) nextArgs() []Flag {
 
 func (c *command) reset() {
 	for _, arg := range c.Positional {
-		arg.reset()
+		arg.flag.reset()
 	}
 	for _, cmd := range c.Commands {
 		cmd.reset()
 	}
 }
 
-func matchFlags(commands []*command, args []string) (Flag, []string, bool) {
+func matchFlags(commands []*command, args []string) (flagConsumer, []string, bool) {
 	for i := len(commands); i > 0; i-- {
 		cmd := commands[i-1]
 		if name, ok := strings.CutPrefix(args[0], "--"); ok {
 			name, val, eql := strings.Cut(name, "=")
 			if f, ok := cmd.stringFlags[name]; ok {
 				if eql {
-					return f, []string{name, val}, true
+					return f, []string{val}, true
 				}
-				return f, args, false
+				return f, args[1:], false
 			}
 		} else if name, ok := strings.CutPrefix(args[0], "-"); ok && args[0] != "-" {
 			if f, ok := cmd.runeFlags[[]rune(name)[0]]; ok {
-				return f, args, false
+				return f, args[1:], false
 			}
 		}
 	}
@@ -386,6 +447,6 @@ func matchFlags(commands []*command, args []string) (Flag, []string, bool) {
 }
 
 type Command interface {
-	addFlag(string, Flag)
-	addPos(Flag)
+	addFlag(string, flagConsumer)
+	addPos(posConsumer, string)
 }

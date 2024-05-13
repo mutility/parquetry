@@ -42,7 +42,9 @@ func Test(t *testing.T) {
 				for c, ok := bytes.CutSuffix(data, remove); ok && bytes.HasSuffix(c, remove); c, ok = bytes.CutSuffix(data, remove) {
 					data = c
 				}
-				ts.Stdout().Write(data)
+				if _, err := ts.Stdout().Write(data); err != nil {
+					ts.Fatalf("%v", err)
+				}
 			},
 		},
 		Setup: func(e *testscript.Env) error {

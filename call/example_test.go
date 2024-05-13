@@ -83,10 +83,11 @@ func ExampleProgram_subcommand() {
 	// sub <nil> [A B C D]
 }
 
-func ExampleEnumerated_var() {
+func ExampleOption_EnumRaw() {
 	p := call.Program("program", "demonstrates call")
-	c := call.Enumerated("color", "of the rainbow",
-		"red", "orange", "yellow", "green", "blue", "violet").FlagOn(p)
+	c := call.Option[string]("color", "of the rainbow").
+		EnumRaw("red", "orange", "yellow", "green", "blue", "violet").
+		FlagOn(p)
 
 	cmd, err := p.Parse(strings.Fields("prog --color yellow"))
 	fmt.Println("1:", cmd.Name, err, c.Value())
@@ -133,7 +134,7 @@ func ExampleOption_command() {
 
 	// output:
 	// 0: prog <nil> []
-	// 1: cmd expected "<v> ..." []
+	// 1: cmd cmd: expected "<v> ..." []
 	// 2: cmd <nil> [arg]
 	// 3: cmd <nil> [arg1 arg2]
 }

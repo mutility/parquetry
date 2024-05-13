@@ -15,7 +15,7 @@ import (
 	"github.com/mutility/parquetry/call"
 )
 
-type parquetReader = parquet.Reader
+type parquetReader = parquet.Reader //nolint:staticcheck
 
 func main() {
 	err := run()
@@ -25,41 +25,65 @@ func main() {
 }
 
 func run() error {
-	p := call.Program("parquetry", "Tooling for parquet files")
-	catCmd := p.Command("cat", "Print a parquet file")
-	headCmd := p.Command("head", "Print (or skip) the beginning of a parquet file")
-	tailCmd := p.Command("tail", "Print (or skip) the ending of a parquet file")
-	schemaCmd := p.Command("schema", "Print a parquet schema")
-	toCmd := p.Command("to", "Convert parquet to...")
-	whereCmd := p.Command("where", "Filter a parquet file").Detail(filterHelp)
-	shapeCmd := p.Command("reshape", "Reshape a parquet file").Detail(shapeHelp)
-
-	out := call.Enumerated("format", "Output as go, csv, json, or jsonl", "go", "csv", "json", "jsonl").Default("go", "")
+	outFmt := call.Option[string]("format", "Output as go, csv, json, or jsonl", call.Default("go")).
+		EnumRaw("go", "csv", "json", "jsonl")
 	head := call.Option[int64]("head", "Include first n or skip first -n rows", call.DashNumber).Hint("n|-n")
 	tail := call.Option[int64]("tail", "Include last n or skip last -n rows", call.DashNumber).Hint("n|-n")
-	filter := call.Option[string]("filter", "Include rows matching this expression", call.SeeCmd(whereCmd)).Hint("FILTER")
-	shape := call.Option[string]("shape", "Transform rows into specified shape", call.SeeCmd(shapeCmd)).Hint("SHAPE")
+	filter := call.Option[string]("filter", "Include rows matching this expression").Hint("FILTER")
+	shape := call.Option[string]("shape", "Transform rows into specified shape").Hint("SHAPE")
 
-	out.FlagsOn("-f|--format", catCmd, headCmd, tailCmd, whereCmd, shapeCmd).PosOn("", toCmd)
-	head.FlagOn(catCmd, toCmd).PosOn("rows", headCmd)
-	tail.FlagOn(catCmd, toCmd).PosOn("rows", tailCmd)
-	filter.FlagsOn("-m|--filter", shapeCmd).PosOn("", whereCmd)
-	shape.FlagsOn("-x|--shape", whereCmd).PosOn("", shapeCmd)
+	schemaFmt := call.Option[string]("format", "Output schema as message or logical/physical struct", call.Default("message")).
+		EnumRaw("message", "m", "logical", "l", "physical", "p")
 
-	schemaFmt := call.Enumerated[string]("format", "Output schema as message or logical/physical struct",
-		"message", "m", "logical", "l", "physical", "p").Default("message", "")
-	schemaFmt.FlagsOn("-f|--format", schemaCmd)
-
-	file := call.Option[string]("file", "Parquet file", call.DashStdio).PosOn("", headCmd, tailCmd)
-	files := call.Multi[string]("file", "Parquet files", call.DashStdio).PosOn("", catCmd, schemaCmd, toCmd, whereCmd, shapeCmd)
+	file := call.Option[string]("file", "Parquet file")
+	files := call.Multi[string]("file", "Parquet files")
 	noFilter, noShape := call.Hardcoded(""), call.Hardcoded("")
-	catCmd.Runs(call.Handler6(printFile, out, head, tail, noFilter, noShape, files))
-	headCmd.Runs(call.Handler6(printFile, out, head, call.Hardcoded[int64](0), noFilter, noShape, call.Singleton(file)))
-	tailCmd.Runs(call.Handler6(printFile, out, call.Hardcoded[int64](0), tail, noFilter, noShape, call.Singleton(file)))
-	toCmd.Runs(call.Handler6(printFile, out, head, tail, noFilter, noShape, files))
-	whereCmd.Runs(call.Handler6(printFile, out, head, tail, filter, shape, files))
-	shapeCmd.Runs(call.Handler6(printFile, out, head, tail, filter, shape, files))
-	schemaCmd.Runs(call.Handler2(printSchema, schemaFmt, files))
+
+	p := call.Program("parquetry", "Tooling for parquet files")
+	p.Command("cat", "Print a parquet file",
+		call.ByName(outFmt, "-f", "--format"),
+		call.ByName(head),
+		call.ByName(tail),
+		call.ByOrder(files),
+	).Runs(call.Handler6(printFile, outFmt, head, tail, noFilter, noShape, files))
+
+	p.Command("head", "Print (or skip) the beginning of a parquet file",
+		call.ByName(outFmt, "-f", "--format"),
+		call.ByOrder(head, "rows"),
+		call.ByOrder(file),
+	).Runs(call.Handler6(printFile, outFmt, head, call.Hardcoded[int64](0), noFilter, noShape, call.Singleton(file)))
+
+	p.Command("tail", "Print (or skip) the ending of a parquet file",
+		call.ByName(outFmt, "-f", "--format"),
+		call.ByOrder(tail, "rows"),
+		call.ByOrder(file),
+	).Runs(call.Handler6(printFile, outFmt, call.Hardcoded[int64](0), tail, noFilter, noShape, call.Singleton(file)))
+
+	p.Command("schema", "Print a parquet schema",
+		call.ByName(schemaFmt, "-f", "--format"),
+		call.ByOrder(files),
+	).Runs(call.Handler2(printSchema, schemaFmt, files))
+
+	p.Command("to", "Convert parquet to...",
+		call.ByName(head),
+		call.ByName(tail),
+		call.ByOrder(outFmt),
+		call.ByOrder(files),
+	).Runs(call.Handler6(printFile, outFmt, head, tail, noFilter, noShape, files))
+
+	p.Command("where", "Filter a parquet file",
+		call.ByName(outFmt, "-f", "--format"),
+		call.ByName(shape, "-x", "--shape"),
+		call.ByOrder(filter),
+		call.ByOrder(files),
+	).Detail(filterHelp, filter).Runs(call.Handler6(printFile, outFmt, head, tail, filter, shape, files))
+
+	p.Command("reshape", "Reshape a parquet file",
+		call.ByName(outFmt, "-f", "--format"),
+		call.ByName(filter, "-m", "--filter"),
+		call.ByOrder(shape),
+		call.ByOrder(files),
+	).Detail(shapeHelp, shape).Runs(call.Handler6(printFile, outFmt, head, tail, filter, shape, files))
 
 	cmd, err := p.Parse(os.Args)
 	if err != nil {
@@ -235,7 +259,9 @@ func eachRow(pq *parquetReader, head, tail int64, do WriteFunc) error {
 	v, z := reflect.New(rowType), reflect.Zero(rowType)
 
 	if start > 0 {
-		pq.SeekToRow(start)
+		if err := pq.SeekToRow(start); err != nil {
+			return err
+		}
 	}
 	for i := start; i < stop; i++ {
 		v.Elem().Set(z)
