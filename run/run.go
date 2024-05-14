@@ -120,7 +120,7 @@ func (a *Application) main(ctx context.Context, env Environ) (*Command, error) {
 				if rem == 0 {
 					i++
 				}
-				if err := opt.option.parseArg(&args); err != nil {
+				if err := opt.option.(optionFlagArg).parseArg(&args); err != nil {
 					return nil, flagParseError{cur, opt, arg, err}
 				}
 				if args.needConsume {
@@ -144,11 +144,11 @@ func (a *Application) main(ctx context.Context, env Environ) (*Command, error) {
 		if carg < len(cur.args) {
 			opt := &cur.args[carg]
 			args := argArgs{opt, env.Args, &i, true, &canFlag, maybeFlag}
-			if opt.option.parseMany != nil {
-				if err := opt.option.parseMany(&args); err != nil {
+			if m, ok := opt.option.(optionSlice); ok {
+				if err := m.parseMany(&args); err != nil {
 					return nil, argParseError{cur, opt, arg, err}
 				}
-			} else if err := opt.option.parseArg(&args); err != nil {
+			} else if err := opt.option.(optionFlagArg).parseArg(&args); err != nil {
 				return nil, argParseError{cur, opt, arg, err}
 			}
 			if args.needConsume {

@@ -50,7 +50,7 @@ func writeUsage(w io.Writer, app *Application, cmd *Command) error {
 	if len(cmd.args) > 0 {
 		args := makeTable("Arguments:")
 		for _, arg := range cmd.args {
-			args.Add(arg.describe(), arg.option.desc)
+			args.Add(arg.describe(), arg.option.description())
 		}
 		args.Write(w)
 	}
@@ -89,10 +89,10 @@ func writeUsage(w io.Writer, app *Application, cmd *Command) error {
 			} else if p := flag.hint; p != "" {
 				name += "=" + p
 			}
-			for _, cmd := range flag.option.seeAlso {
+			for _, cmd := range flag.option.seeAlso() {
 				see = append(see, fmt.Sprintf("(See %s %s --help)", app.name, cmd.name))
 			}
-			info = append(info, flagInfo{flag: flag, name: name, desc: flag.option.desc, rel: see})
+			info = append(info, flagInfo{flag: flag, name: name, desc: flag.option.description(), rel: see})
 		}
 
 		flags := makeTable("Flags:")

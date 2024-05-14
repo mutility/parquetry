@@ -56,7 +56,7 @@ func ExampleString() {
 		argVal := run.String("arg", "")
 		app.Args(argVal.Pos("arg"))
 		parseMain(app, args...)
-		fmt.Println("argVal:", strconv.Quote(argVal.Any().(string)))
+		fmt.Println("argVal:", strconv.Quote(argVal.Value()))
 	}
 
 	try("hello")
@@ -81,7 +81,7 @@ func ExampleFileLike() {
 		argVal := run.FileLike[quotedstring]("arg", "")
 		app.Args(argVal.Pos("arg"))
 		parseMain(app, args...)
-		fmt.Println("argVal:", argVal.Any())
+		fmt.Println("argVal:", argVal.Value())
 	}
 
 	try("hello")
@@ -104,9 +104,9 @@ func ExampleFileLikeSlice_many() {
 	try := func(args ...string) {
 		app := run.App("runtest", "testing run")
 		argVal := run.FileLikeSlice[quotedstring]("arg", "")
-		app.Args(argVal.Pos("arg"))
+		app.Args(argVal.Rest("arg"))
 		parseMain(app, args...)
-		fmt.Println("argVal:", argVal.Any())
+		fmt.Println("argVal:", argVal.Value())
 	}
 
 	try("hello", "world")
@@ -144,7 +144,7 @@ func ExampleStringLike() {
 	fileVal := run.StringLike[quotedstring]("file", "")
 	app.Args(fileVal.Pos("file"))
 	parseMain(app, "hello")
-	fmt.Println("fileVal:", fileVal.Any())
+	fmt.Println("fileVal:", fileVal.Value())
 
 	// output:
 	// fileVal: "hello"
@@ -157,7 +157,7 @@ func ExampleIntLike() {
 		u8 := run.UintLike[uint8]("smalluint", "")
 		app.Args(i8.Pos("i"), u8.Pos("u"))
 		parseMain(app, args...)
-		fmt.Println("i8:", i8.Any(), "u8:", u8.Any())
+		fmt.Println("i8:", i8.Value(), "u8:", u8.Value())
 	}
 
 	try("-100", "200") // fine
@@ -198,7 +198,7 @@ func ExampleOneStringOf_enum() {
 	letter := run.OneStringOf("letter", "", "alpha", "bravo", "charlie")
 	app.Args(letter.Pos("abbrev"))
 	parseMain(app, "bravo")
-	fmt.Println("letter:", letter.Any())
+	fmt.Println("letter:", letter.Value())
 	parseMain(app, "delta")
 
 	// output:
@@ -215,7 +215,7 @@ func ExampleOneNameOf_enum() {
 	})
 	app.Args(digit.Pos("name"))
 	parseMain(app, "two")
-	fmt.Println("digit:", digit.Any())
+	fmt.Println("digit:", digit.Value())
 	parseMain(app, "four")
 
 	// output:
@@ -230,7 +230,7 @@ func ExampleApplication_Flags() {
 		b := run.String("b", "")
 		app.Flags(a.Flag(), b.Flag())
 		parseMain(app, args...)
-		fmt.Println("a:", a.Any(), "b:", b.Any())
+		fmt.Println("a:", a.Value(), "b:", b.Value())
 	}
 	try("--b", "beta")
 	try("--b=gamma", "--a")
@@ -251,7 +251,7 @@ func ExampleFlag_Default() {
 		})
 		app.Flags(digit.Flag().Default("two"))
 		parseMain(app, args...)
-		fmt.Println("digit:", digit.Any())
+		fmt.Println("digit:", digit.Value())
 	}
 	try()
 	try("--digit", "three")

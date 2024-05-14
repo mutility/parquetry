@@ -21,7 +21,7 @@ type Orders struct{}
 type Flag struct {
 	rune          rune
 	string        string
-	option        *Option
+	option        Option
 	hint          string
 	defaultString string
 	defaultSet    bool
@@ -45,18 +45,18 @@ type commands []*Command
 func (c commands) searchString(index int, s string) int { return cmp.Compare(c[index].name, s) }
 
 type Arg struct {
-	option *Option
+	option Option
 	name   string
 	many   bool
 }
 
 func (a Arg) can(dashArg string) (ok bool) {
-	if slices.Contains(a.option.strOK, dashArg) {
+	if slices.Contains(a.option.okValues(), dashArg) {
 		return true
 	}
 
 	nonDash := strings.IndexFunc(dashArg, func(r rune) bool { return r != '-' })
-	return nonDash >= 0 && strings.HasPrefix(a.option.prefixOK, dashArg[:nonDash])
+	return nonDash >= 0 && strings.HasPrefix(a.option.okPrefix(), dashArg[:nonDash])
 }
 
 func (a Arg) describe() string {
@@ -127,13 +127,13 @@ func (c *Command) Details(detail string) error {
 	return nil
 }
 
-func (c *Command) DetailsFor(detail string, opts ...*Option) error {
+func (c *Command) DetailsFor(detail string, opts ...Option) error {
 	if c.detail != "" {
 		return wrap(ErrRedefined, c.name+" detail")
 	}
 	c.detail = detail
 	for _, opt := range opts {
-		opt.SeeAlso(c)
+		opt.setSeeAlso(c)
 	}
 	return nil
 }
@@ -287,7 +287,7 @@ func Details(detail string) CmdOption {
 	})
 }
 
-func DetailsFor(detail string, opts ...*Option) CmdOption {
+func DetailsFor(detail string, opts ...Option) CmdOption {
 	return cmdOptionFunc(func(cmd *Command) error {
 		return cmd.DetailsFor(detail, opts...)
 	})
