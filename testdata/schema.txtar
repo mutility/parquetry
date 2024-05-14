@@ -11,7 +11,7 @@ stderr 'missing.parquet: no such file or directory'
 stderr 'missing.parquet: no such file or directory'
 # invalid formats should be reported and fail
 ! exec parquetry schema -f unknown alphav.parquet
-stderr 'format must be one of'
+stderr '"unknown" not one of "message"'
 
 # alphav message
 exec parquetry schema alphav.parquet

@@ -252,9 +252,9 @@ Arguments:
 
 Flags:
   -h, --help             Show context-sensitive help.
+  -f, --format=go        Output as go, csv, json, or jsonl
   -m, --filter=FILTER    Include rows matching this expression
                          (See parquetry where --help)
-  -f, --format=go        Output as go, csv, json, or jsonl
 -- help.where --
 Usage: parquetry where [flags] <filter> <file> ...
 
