@@ -24,8 +24,15 @@ func main() {
 	}
 }
 
+type (
+	SchemaFormat string
+	DataFormat   string
+	Filter       string
+	Shape        string
+)
+
 func Run() error {
-	dataFormats := []run.NamedValue[string]{
+	schemaFormats := []run.NamedValue[SchemaFormat]{
 		{Name: "message", Value: "message"},
 		{Name: "m", Value: "message"},
 		{Name: "logical", Value: "logical"},
@@ -33,12 +40,12 @@ func Run() error {
 		{Name: "physical", Value: "physical"},
 		{Name: "p", Value: "physical"},
 	}
-	meta := run.OneNameOf("format", "Output schema as message or logical/physical struct", dataFormats)
-	data := run.OneStringOf("format", "Output as go, csv, json, or jsonl", "go", "csv", "json", "jsonl")
+	meta := run.OneNameOf("format", "Output schema as message or logical/physical struct", schemaFormats)
+	data := run.OneStringOf[DataFormat]("format", "Output as go, csv, json, or jsonl", "go", "csv", "json", "jsonl")
 	head := run.IntLike[int64]("head", "Include first n or skip first -n rows")
 	tail := run.IntLike[int64]("tail", "Include last n or skip last -n rows")
-	filt := run.String("filter", "Include rows matching this expression")
-	shap := run.String("shape", "Transform rows into specified shape")
+	filt := run.StringLike[Filter]("filter", "Include rows matching this expression")
+	shap := run.StringLike[Shape]("shape", "Transform rows into specified shape")
 
 	file := run.File("file", "Parquet file")
 	files := run.FileSlice("file", "Parquet files")
@@ -47,22 +54,25 @@ func Run() error {
 	tailFlag := tail.Flags(0, "tail", "n|-n")
 	dataFlag := data.Flags('f', "format", "").Default("go")
 
+	printOne := run.Handler6(printFile, &data, &head, &tail, &filt, &shap, file.Slice())
+	printMany := run.Handler6(printFile, &data, &head, &tail, &filt, &shap, &files)
+
 	catCmd, _ := run.CmdOpt("cat", "Print a parquet file",
 		run.Flags(dataFlag, headFlag, tailFlag),
 		run.Args(files.Rest("file")),
-		run.Handler6(printFile, &data, &head, &tail, &filt, &shap, &files),
+		printMany,
 	)
 
 	headCmd, _ := run.CmdOpt("head", "Print (or skip) the beginning of a parquet file",
 		run.Flags(dataFlag),
 		run.Args(head.Pos("rows"), file.Pos("file")),
-		run.Handler6(printFile, &data, &head, &tail, &filt, &shap, file.Slice()),
+		printOne,
 	)
 
 	tailCmd, _ := run.CmdOpt("tail", "Print (or skip) the ending of a parquet file",
 		run.Flags(dataFlag),
 		run.Args(tail.Pos("rows"), file.Pos("file")),
-		run.Handler6(printFile, &data, &head, &tail, &filt, &shap, file.Slice()),
+		printOne,
 	)
 
 	schemaCmd, _ := run.CmdOpt("schema", "Print a parquet schema",
@@ -74,21 +84,21 @@ func Run() error {
 	toCmd, _ := run.CmdOpt("to", "Convert parquet to...",
 		run.Flags(headFlag, tailFlag),
 		run.Args(data.Pos("format"), files.Rest("file")),
-		run.Handler6(printFile, &data, &head, &tail, &filt, &shap, &files),
+		printMany,
 	)
 
 	whereCmd, _ := run.CmdOpt("where", "Filter a parquet file",
 		run.Flags(dataFlag, shap.Flags('x', "shape", "SHAPE")),
 		run.Args(filt.Pos("filter"), files.Rest("file")),
 		run.DetailsFor(filterHelp, &filt),
-		run.Handler6(printFile, &data, &head, &tail, &filt, &shap, &files),
+		printMany,
 	)
 
 	reshapeCmd, _ := run.CmdOpt("reshape", "Reshape a parquet file",
 		run.Flags(dataFlag, filt.Flags('m', "filter", "FILTER")),
 		run.Args(shap.Pos("shape"), files.Rest("file")),
 		run.DetailsFor(shapeHelp, &shap),
-		run.Handler6(printFile, &data, &head, &tail, &filt, &shap, &files),
+		printMany,
 	)
 
 	app, _ := run.AppOpt("parquetry", "Tooling for parquet files",
@@ -102,15 +112,15 @@ func Run() error {
 	return err
 }
 
-func printSchema(ctx context.Context, env run.Environ, format string, files []string) error {
+func printSchema(ctx context.Context, env run.Environ, format SchemaFormat, files []string) error {
 	return eachFile(files, func(name string) error {
 		return withReader(name, func(pq *parquetReader) (err error) {
 			switch format {
 			case "message":
 				_, err = fmt.Fprintln(env.Stdout, pq.Schema())
-			case "physical", "p":
+			case "physical":
 				_, err = fmt.Fprintln(env.Stdout, pq.Schema().GoType())
-			case "logical", "l":
+			case "logical":
 				_, err = fmt.Fprintln(env.Stdout, goLogicalType(pq.Schema()))
 			}
 			return err
@@ -118,7 +128,7 @@ func printSchema(ctx context.Context, env run.Environ, format string, files []st
 	})
 }
 
-func printFile(ctx context.Context, env run.Environ, format string, head, tail int64, filter, shape string, files []string) error {
+func printFile(ctx context.Context, env run.Environ, format DataFormat, head, tail int64, filter Filter, shape Shape, files []string) error {
 	return eachFile(files, func(name string) error {
 		return withReader(name, func(pq *parquetReader) error {
 			return withWriter(format, env.Stdout, func(write WriteFunc) error {
@@ -174,7 +184,7 @@ If the source has a group Person with fields Name and Age:
   - 'Person.Name, Person.Age' will flatten the nested group into Name,Age
 `
 
-func withWriter(format string, w io.Writer, do func(WriteFunc) error) error {
+func withWriter(format DataFormat, w io.Writer, do func(WriteFunc) error) error {
 	switch format {
 	case "go":
 		return do(func(v reflect.Value) error {
@@ -199,7 +209,7 @@ func withWriter(format string, w io.Writer, do func(WriteFunc) error) error {
 
 type WriteFunc func(reflect.Value) error
 
-func makeFilter(filter string, w WriteFunc) WriteFunc {
+func makeFilter(filter Filter, w WriteFunc) WriteFunc {
 	if filter == "" {
 		return w
 	}

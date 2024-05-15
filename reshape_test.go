@@ -80,7 +80,7 @@ var schema = reflect.TypeOf(value)
 func TestParse(t *testing.T) {
 	for _, tt := range reshapeTests {
 		t.Run(tt.Shape, func(t *testing.T) {
-			reshape, err := ParseShape(tt.Shape, schema)
+			reshape, err := ParseShape(Shape(tt.Shape), schema)
 			if err != nil {
 				t.Fatal(err)
 			}

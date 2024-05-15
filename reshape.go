@@ -9,7 +9,7 @@ import (
 	"github.com/alecthomas/participle/v2/lexer"
 )
 
-func reshape(shape string, pq *parquetReader, w WriteFunc) WriteFunc {
+func reshape(shape Shape, pq *parquetReader, w WriteFunc) WriteFunc {
 	if shape == "" {
 		return w
 	}
@@ -31,7 +31,7 @@ var (
 	reshapeParser     *participle.Parser[reFields]
 )
 
-func ParseShape(shape string, t reflect.Type) (*reshaper, error) {
+func ParseShape(shape Shape, t reflect.Type) (*reshaper, error) {
 	reshapeParserOnce.Do(func() {
 		reshapeParser = participle.MustBuild[reFields](
 			participle.Union[reValue](reStruct{}, reField{}),
@@ -44,7 +44,7 @@ func ParseShape(shape string, t reflect.Type) (*reshaper, error) {
 		)
 	})
 
-	shaper, err := reshapeParser.ParseString("shape", shape)
+	shaper, err := reshapeParser.ParseString("shape", string(shape))
 	if err != nil {
 		return nil, err
 	}
