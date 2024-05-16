@@ -382,8 +382,11 @@ func goLogicalTypeField(pf parquet.Field, path []string, tag bool) reflect.Struc
 				}
 			}
 		}
-	} else {
+	} else if !pf.Leaf() {
 		sf.Type = reflect.StructOf(goLogicalTypeFields(pf.Fields(), path, tag))
+	}
+	if k := sf.Type.Kind(); pf.Optional() && k != reflect.Pointer && k != reflect.Map {
+		sf.Type = reflect.PointerTo(sf.Type)
 	}
 	return sf
 }
