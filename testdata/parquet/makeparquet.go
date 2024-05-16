@@ -28,6 +28,43 @@ func main() {
 		"Date", parquet.Date(),
 	)))
 
+	exSchema := parquet.NewSchema("", StructOf(
+		"f", parquet.Leaf(parquet.BooleanType),
+		"pf", parquet.Optional(parquet.Leaf(parquet.BooleanType)),
+		"i", parquet.Int(32),
+		"j", parquet.Int(32),
+		"k", parquet.Int(32),
+		"m", parquet.Map(parquet.String(), parquet.String()),
+		"ps", parquet.Optional(parquet.String()),
+		"rs", parquet.String(),
+		"w", StructOf(
+			"d", parquet.Date(),
+			"t", parquet.Time(parquet.Millisecond),
+			"s", parquet.Timestamp(parquet.Millisecond),
+		),
+	))
+	type dt struct {
+		D int32 `parquet:"d"`
+		T int32 `parquet:"t"`
+		S int64 `parquet:"s"`
+	}
+	f := false
+	s := "ptr"
+	write("example.parquet", []struct {
+		F  bool              `parquet:"f"`
+		Pf *bool             `parquet:"pf"`
+		I  int               `parquet:"i"`
+		J  int               `parquet:"j"`
+		K  int               `parquet:"k"`
+		M  map[string]string `parquet:"m"`
+		Ps *string           `parquet:"ps"`
+		Rs string            `parquet:"rs"`
+		W  dt                `parquet:"w"`
+	}{
+		{F: true, Pf: &f, I: 3, J: 6, K: 9, M: map[string]string{"hello": "world"}, Rs: "aeiou", W: dt{555, 666, 777}},
+		{F: false, I: 2, J: 4, K: 6, M: map[string]string{"prop": "val"}, Ps: &s, Rs: "aeiouy", W: dt{888, 999, 1000}},
+	}, exSchema)
+
 	write("times.parquet", []struct {
 		Ms int64 `parquet:"ms"`
 		Us int64 `parquet:"us"`
@@ -109,6 +146,7 @@ func write[T any](name string, content []T, opts ...parquet.WriterOption) {
 	if err != nil {
 		panic(err)
 	}
+	println("wrote", len(content), "records to", name)
 }
 
 type Struct struct {
