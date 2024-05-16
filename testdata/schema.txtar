@@ -146,7 +146,7 @@ message {
 	required int32 Date (DATE);
 }
 -- dates.log --
-struct { Date main.Date }
+struct { Date Date }
 -- dates.phy --
 struct { Date int32 }
 -- times.msg --
@@ -156,7 +156,7 @@ message {
 	required int64 ns (TIME(isAdjustedToUTC=true,unit=NANOS));
 }
 -- times.log --
-struct { Ms main.TimeMilliUTC "json:\"ms\" parquet:\"ms\""; Us main.TimeMicroUTC "json:\"us\" parquet:\"us\""; Ns main.TimeNanoUTC "json:\"ns\" parquet:\"ns\"" }
+struct { Ms TimeMilliUTC; Us TimeMicroUTC; Ns TimeNanoUTC }
 -- times.phy --
 struct { Ms int32; Us int64; Ns int64 }
 -- timestamps.msg --
@@ -169,6 +169,6 @@ message {
 	required int64 Tns (TIMESTAMP(isAdjustedToUTC=true,unit=NANOS));
 }
 -- timestamps.log --
-struct { Sms main.StampMilliUTC; Sus main.StampMicroUTC; Sns main.StampNanoUTC; Tms main.StampMilliUTC; Tus main.StampMicroUTC; Tns main.StampNanoUTC }
+struct { Sms StampMilliUTC; Sus StampMicroUTC; Sns StampNanoUTC; Tms StampMilliUTC; Tus StampMicroUTC; Tns StampNanoUTC }
 -- timestamps.phy --
 struct { Sms int64; Sus int64; Sns int64; Tms int64; Tus int64; Tns int64 }

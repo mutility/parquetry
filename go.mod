@@ -4,7 +4,7 @@ go 1.22.1
 
 require (
 	github.com/alecthomas/participle/v2 v2.1.1
-	github.com/flexera/tabular v0.0.0-20240313132131-df322a4c6a80
+	github.com/expr-lang/expr v1.16.7
 	github.com/parquet-go/parquet-go v0.20.1
 	github.com/rogpeppe/go-internal v1.12.0
 )
@@ -21,8 +21,7 @@ require (
 	github.com/segmentio/encoding v0.3.6 // indirect
 	golang.org/x/sys v0.10.0 // indirect
 	golang.org/x/tools v0.1.12 // indirect
+	google.golang.org/protobuf v1.34.1 // indirect
 )
 
 replace github.com/parquet-go/parquet-go => ../../../flexera/parquet-go
-
-replace github.com/flexera/tabular => ../../../flexera/tabular

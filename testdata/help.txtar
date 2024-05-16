@@ -247,47 +247,52 @@ If the source has a group Person with fields Name and Age:
   - 'Person.Name, Person.Age' will flatten the nested group into Name,Age
 
 Arguments:
-  <shape>       Transform rows into specified shape
+  <shape>       Transform rows into SHAPE
   <file> ...    Parquet files
 
 Flags:
   -h, --help             Show context-sensitive help.
   -f, --format=go        Output as go, csv, json, or jsonl
-  -m, --filter=FILTER    Include rows matching this expression
+  -m, --filter=FILTER    Include rows matching FILTER
                          (See parquetry where --help)
 -- help.where --
 Usage: parquetry where [flags] <filter> <file> ...
 
 Filter a parquet file
 
-Specify the desired filter per the Flexera filter language:
+Specify the desired filter per the expr language, a go-like syntax.
+
+Full details at https://expr-lang.org/docs/language-definition
 
 Compare a dotted name to literals true/false/null, integers, dates, times,
-or strings. Values must match the type of the data to which they are compared.
+or strings. Values must generally match the type of the data to which they
+are compared. Dates, times, and timestamps can also be compared to properly
+formatted strings, integers (per their physical storage), and either date(...)
+or duration(...) values.
 
-Comparisons include eq (equality), ne (inequality), lt (less), gt (greater),
-le (less or equal), ge (greater or equal), co (contains), nc (not contains),
-in (member of), ni (not member of). Group comparisons with optional (),
-and tweak with a leading NOT, adjoining AND or OR.
+Comparisons include == (equality), != (inequality), < (less), > (greater), <=
+(less or equal), >= (greater or equal), in (membership) Group comparisons with
+optional (), and tweak with a leading ! (not), adjoining && (and) or || (or).
 
 Examples:
-  - a eq true OR b eq false
-  - a ne null
-  - a lt 'b'
-  - a le '2024-01-01T01:01:01.111Z'
-  - a gt '01:01:01.111Z'
-  - a ge '2024-01-01' AND a lt '2025-01-01'
-  - a co 'e' AND a nc 'f'
-  - a in [1, 2, 3]
-  - a ni ['d', 'e', 'f']
-  - NOT((a eq 1 AND b eq 2) OR (a eq 2 AND b eq 1))
+  - someBool == true || someBool == false
+  - some.nested.boolean || !some.other.boolean
+  - somePointer != nil
+  - someString < "b"
+  - timestamp < "2024-01-01T01:01:01.111Z"
+  - time > "01:01:01.111Z"
+  - day >= "2024-01-01" && date < "2025-01-01"
+  - indexOf(a, "e")!=-1 && indexOf(a, "f")==-1
+  - someInt in [1, 2, 3]
+  - !(someString in ["d", "e", "f"])
+  - !((anInt == 1 && otherInt == 2) || (anInt == 2 && otherInt == 1))
 
 Arguments:
-  <filter>      Include rows matching this expression
+  <filter>      Include rows matching FILTER
   <file> ...    Parquet files
 
 Flags:
   -h, --help           Show context-sensitive help.
   -f, --format=go      Output as go, csv, json, or jsonl
-  -x, --shape=SHAPE    Transform rows into specified shape
+  -x, --shape=SHAPE    Transform rows into SHAPE
                        (See parquetry reshape --help)

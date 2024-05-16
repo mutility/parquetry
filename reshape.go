@@ -9,13 +9,13 @@ import (
 	"github.com/alecthomas/participle/v2/lexer"
 )
 
-func reshape(shape Shape, pq *parquetReader, w WriteFunc) WriteFunc {
+func reshapeWrite(shape Shape, pq *parquetReader, w WriteFunc) (WriteFunc, error) {
 	if shape == "" {
-		return w
+		return w, nil
 	}
-	reshape, err := ParseShape(shape, goLogicalType(pq.Schema()))
+	reshape, err := ParseShape(shape, goLogicalType(pq.Schema(), true))
 	if err != nil {
-		return func(reflect.Value) error { return err }
+		return w, err
 	}
 	return func(v reflect.Value) error {
 		r, err := reshape.Eval(v)
@@ -23,7 +23,7 @@ func reshape(shape Shape, pq *parquetReader, w WriteFunc) WriteFunc {
 			return err
 		}
 		return w(r)
-	}
+	}, nil
 }
 
 var (

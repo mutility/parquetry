@@ -4,92 +4,115 @@ stderr 'missing.parquet: no such file or directory'
 ! stdout .
 
 # bad filters should be reported and fail
-! exec parquetry where 'a eq a' alphav.parquet
-stderr .
+! exec parquetry where 'A == a' alphav.parquet
+stderr 'parquetry: error: unknown name'
+! stdout .
+! exec parquetry where 'A A' alphav.parquet
+stderr 'parquetry: error: unexpected token'
+! stdout .
+! exec parquetry where 'A !=' alphav.parquet
+stderr 'parquetry: error: unexpected token EOF'
 ! stdout .
 
 # alphav: only matching rows
-exec parquetry where 'A eq ''d'' OR A eq ''f''' alphav.parquet
+exec parquetry where 'A=="d" || A=="f"' alphav.parquet
+cmp stdout alphav.want
+
+# alphav: transformative comparisons
+exec parquetry where 'upper(A) in ["D", "F"]' alphav.parquet
 cmp stdout alphav.want
 
 # alphav: in specified format
-exec parquetry where -f jsonl 'A eq ''d'' OR A eq ''f''' alphav.parquet
+exec parquetry where -f jsonl 'A=="d" || A=="f"' alphav.parquet
 cmp stdout alphav.json
 
 # alphaw: include matching row
-exec parquetry where 'A eq ''f'' OR A eq ''a''' alphaw.parquet
+exec parquetry where 'A=="f" || A=="a"' alphaw.parquet
 cmp stdout alphaw.want
 
 # alphaw: reshaped
-exec parquetry where 'A eq ''a''' alphaw.parquet --shape B
+exec parquetry where 'A=="a"' alphaw.parquet --shape B
 cmp stdout alphaw-b.want
 
+# alphaw: self-comparisons
+exec parquetry where 'A < C' alphaw.parquet
+cmp stdout alphaw.want
+exec parquetry where 'A > C' alphaw.parquet
+! stdout .
+
 # alphamapv
-exec parquetry where 'M.B eq null OR M.B ne ''b''' alphamapv.parquet
+exec parquetry where 'M.B==nil || M.B!="b"' alphamapv.parquet
 cmp stdout alphamapv.want
 
 # alphamapw: matching row
-exec parquetry where 'M.B ne ''C''' alphamapw.parquet
+exec parquetry where 'M.B != "C"' alphamapw.parquet
 cmp stdout alphamapw.want
 
+# alphamapw: self-comparisons
+exec parquetry where 'M.B < M.C' alphamapw.parquet
+cmp stdout alphamapw.want
+exec parquetry where 'M.B < M.A' alphamapw.parquet
+! stdout .
+
 # dates can be compared by string 'YYYY-MM-DD'
-exec parquetry where 'Date eq ''1973-05-19''' dates.parquet
+exec parquetry where 'Date == "1973-05-19"' dates.parquet
 cmp stdout dates-eq.want
-exec parquetry where 'Date gt ''1973-05-19''' dates.parquet
+exec parquetry where 'Date > "1973-05-19"' dates.parquet
 cmp stdout dates-gt.want
-exec parquetry where 'Date lt ''1973-05-19''' dates.parquet
+exec parquetry where 'Date < "1973-05-19"' dates.parquet
 cmp stdout dates-lt.want
 
 # dates can be compared by int days-since-epoch
-exec parquetry where 'Date eq 1234' dates.parquet
+exec parquetry where 'Date == 1234' dates.parquet
+! stderr .
 cmp stdout dates-eq.want
-exec parquetry where 'Date gt 1234' dates.parquet
+exec parquetry where 'Date > 1234' dates.parquet
 cmp stdout dates-gt.want
-exec parquetry where 'Date lt 1234' dates.parquet
+exec parquetry where 'Date < 1234' dates.parquet
 cmp stdout dates-lt.want
 
 # times can be compared by string '01h02m03s'
-exec parquetry where 'Ms eq ''3h25m45.6789s''' times.parquet
+exec parquetry where 'ms == "3h25m45.6789s"' times.parquet
 cmp stdout times-1.want
-exec parquetry where 'Us gt ''12.345678s''' times.parquet
+exec parquetry where 'us > "12.345678s"' times.parquet
 cmp stdout times-2.want
-exec parquetry where 'Ns lt ''0.123456789s''' times.parquet
+exec parquetry where 'ns < "0.123456789s"' times.parquet
 cmp stdout times-1.want
 
 # times can be compared by int unit-since-midnight
-exec parquetry where 'Ms eq 12345678' times.parquet
+exec parquetry where 'ms == 12345678' times.parquet
 cmp stdout times-1.want
-exec parquetry where 'Us gt 12345678' times.parquet
+exec parquetry where 'us > 12345678' times.parquet
 cmp stdout times-2.want
-exec parquetry where 'Ns lt 123456789' times.parquet
+exec parquetry where 'ns < 123456789' times.parquet
 cmp stdout times-1.want
 
 # stamps can be compared by string 'YYYY-MM-DDThh:mm:ss.nnnZ'
-exec parquetry where 'Sms eq ''2018-02-22T02:22:22.123456789Z''' timestamps.parquet
+exec parquetry where 'Sms=="2018-02-22T02:22:22.123456789Z"' timestamps.parquet
 cmp stdout timestamps-2.want
-exec parquetry where 'Sus gt ''2018-02-22T02:22:22.123456789Z''' timestamps.parquet
+exec parquetry where 'Sus > "2018-02-22T02:22:22.123456789Z"' timestamps.parquet
 cmp stdout timestamps-3.want
-exec parquetry where 'Sns lt ''2018-02-22T02:22:22.123456789Z''' timestamps.parquet
+exec parquetry where 'Sns < "2018-02-22T02:22:22.123456789Z"' timestamps.parquet
 cmp stdout timestamps-1.want
-exec parquetry where 'Tms eq ''2018-02-22T02:22:22.123456789Z''' timestamps.parquet
+exec parquetry where 'Tms=="2018-02-22T02:22:22.123456789Z"' timestamps.parquet
 cmp stdout timestamps-2.want
-exec parquetry where 'Tus gt ''2018-02-22T02:22:22.123456789Z''' timestamps.parquet
+exec parquetry where 'Tus > "2018-02-22T02:22:22.123456789Z"' timestamps.parquet
 cmp stdout timestamps-3.want
-exec parquetry where 'Tns lt ''2018-02-22T02:22:22.123456789Z''' timestamps.parquet
+exec parquetry where 'Tns < "2018-02-22T02:22:22.123456789Z"' timestamps.parquet
 cmp stdout timestamps-1.want
 
 # stamps can be compared by int unit-since-epoch'
-exec parquetry where 'Sms eq 1519266142123' timestamps.parquet
+exec parquetry where 'Sms == 1519266142123' timestamps.parquet
 cmp stdout timestamps-2.want
-exec parquetry where 'Sus gt 1519266142123456' timestamps.parquet
+exec parquetry where 'Sus > 1519266142123456' timestamps.parquet
 cmp stdout timestamps-3.want
-exec parquetry where 'Sns lt 1519266142123456789' timestamps.parquet
+exec parquetry where 'Sns < 1519266142123456789' timestamps.parquet
 cmp stdout timestamps-1.want
-exec parquetry where 'Tms eq 1519266142123' timestamps.parquet
+exec parquetry where 'Tms == 1519266142123' timestamps.parquet
 cmp stdout timestamps-2.want
-exec parquetry where 'Tus gt 1519266142123456' timestamps.parquet
+exec parquetry where 'Tus > 1519266142123456' timestamps.parquet
 cmp stdout timestamps-3.want
-exec parquetry where 'Tns lt 1519266142123456789' timestamps.parquet
+exec parquetry where 'Tns < 1519266142123456789' timestamps.parquet
 cmp stdout timestamps-1.want
 
 -- alphav.want --

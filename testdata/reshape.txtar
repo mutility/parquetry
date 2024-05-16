@@ -11,9 +11,9 @@ stderr 'invalid input'
 # alphav: rename
 exec parquetry reshape 'A as Z' alphav.parquet
 cmp stdout alphav.want
-exec parquetry reshape 'A as csv' alphav.parquet -f csv --filter 'A lt ''c'''
+exec parquetry reshape 'A as csv' alphav.parquet -f csv --filter 'A < "c"'
 cmp stdout alphav-lower.csv
-exec parquetry reshape 'A as json' alphav.parquet -f jsonl --filter 'A lt ''c'''
+exec parquetry reshape 'A as json' alphav.parquet -f jsonl --filter 'A < "c"'
 cmp stdout alphav-lower.jsonl
 
 # alphav: rename, in specified format

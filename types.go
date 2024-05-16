@@ -46,36 +46,40 @@ func epochString[T inttime](t T) string {
 	return epochTime(time.Duration(t) * t.unit()).In(t.loc()).Format(t.layout())
 }
 
-func epochCompare[T inttime](a T, b any) any {
+func epochCompare[T inttime](a T, b any) (int, error) {
 	switch b := b.(type) {
 	case time.Time:
-		return cmp.Compare(time.Duration(a), b.Sub(time.Unix(0, 0))/a.unit())
+		return cmp.Compare(time.Duration(a), b.Sub(time.Unix(0, 0))/a.unit()), nil
 	case string:
 		t, err := time.ParseInLocation(a.layout(), b, a.loc())
 		if err != nil {
-			return err
+			return 0, err
 		}
-		return cmp.Compare(time.Duration(a), t.Sub(time.Unix(0, 0))/a.unit())
+		return cmp.Compare(time.Duration(a), t.Sub(time.Unix(0, 0))/a.unit()), nil
 	case int:
-		return cmp.Compare(int64(a), int64(b))
+		return cmp.Compare(int64(a), int64(b)), nil
+	case T:
+		return cmp.Compare(int64(a), int64(b)), nil
 	}
-	return fmt.Errorf("unsupported comparison type for %T: %T", a, b)
+	return 0, fmt.Errorf("unsupported comparison type for %T: %T", a, b)
 }
 
-func timeCompare[T inttime](a T, b any) any {
+func timeCompare[T inttime](a T, b any) (int, error) {
 	switch b := b.(type) {
 	case time.Duration:
-		return cmp.Compare(time.Duration(a), b/a.unit())
+		return cmp.Compare(time.Duration(a), b/a.unit()), nil
 	case string:
 		d, err := time.ParseDuration(b)
 		if err != nil {
-			return err
+			return 0, err
 		}
-		return cmp.Compare(time.Duration(a), d/a.unit())
+		return cmp.Compare(time.Duration(a), d/a.unit()), nil
 	case int:
-		return cmp.Compare(int64(a), int64(b))
+		return cmp.Compare(int64(a), int64(b)), nil
+	case T:
+		return cmp.Compare(int64(a), int64(b)), nil
 	}
-	return fmt.Errorf("unsupported comparison type for %T: %T", a, b)
+	return 0, fmt.Errorf("unsupported comparison type for %T: %T", a, b)
 }
 
 func marshalEpoch[T inttime](t T) ([]byte, error) {
@@ -109,20 +113,6 @@ func (t TimeMicroLoc) MarshalText() ([]byte, error)  { return marshalEpoch(t) }
 func (t TimeMicroUTC) MarshalText() ([]byte, error)  { return marshalEpoch(t) }
 func (t TimeNanoLoc) MarshalText() ([]byte, error)   { return marshalEpoch(t) }
 func (t TimeNanoUTC) MarshalText() ([]byte, error)   { return marshalEpoch(t) }
-
-func (t Date) Compare(b any) any          { return epochCompare(t, b) }
-func (t StampMilliLoc) Compare(b any) any { return epochCompare(t, b) }
-func (t StampMilliUTC) Compare(b any) any { return epochCompare(t, b) }
-func (t StampMicroLoc) Compare(b any) any { return epochCompare(t, b) }
-func (t StampMicroUTC) Compare(b any) any { return epochCompare(t, b) }
-func (t StampNanoLoc) Compare(b any) any  { return epochCompare(t, b) }
-func (t StampNanoUTC) Compare(b any) any  { return epochCompare(t, b) }
-func (t TimeMilliLoc) Compare(b any) any  { return timeCompare(t, b) }
-func (t TimeMilliUTC) Compare(b any) any  { return timeCompare(t, b) }
-func (t TimeMicroLoc) Compare(b any) any  { return timeCompare(t, b) }
-func (t TimeMicroUTC) Compare(b any) any  { return timeCompare(t, b) }
-func (t TimeNanoLoc) Compare(b any) any   { return timeCompare(t, b) }
-func (t TimeNanoUTC) Compare(b any) any   { return timeCompare(t, b) }
 
 func (Date) unit() time.Duration          { return 24 * time.Hour }
 func (StampMilliLoc) unit() time.Duration { return time.Millisecond }

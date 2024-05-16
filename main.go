@@ -44,8 +44,8 @@ func Run() error {
 	data := run.OneStringOf[DataFormat]("format", "Output as go, csv, json, or jsonl", "go", "csv", "json", "jsonl")
 	head := run.IntLike[int64]("head", "Include first n or skip first -n rows")
 	tail := run.IntLike[int64]("tail", "Include last n or skip last -n rows")
-	filt := run.StringLike[Filter]("filter", "Include rows matching this expression")
-	shap := run.StringLike[Shape]("shape", "Transform rows into specified shape")
+	filt := run.StringLike[Filter]("filter", "Include rows matching FILTER")
+	shap := run.StringLike[Shape]("shape", "Transform rows into SHAPE")
 
 	file := run.File("file", "Parquet file")
 	files := run.FileSlice("file", "Parquet files")
@@ -121,18 +121,27 @@ func printSchema(ctx context.Context, env run.Environ, format SchemaFormat, file
 			case "physical":
 				_, err = fmt.Fprintln(env.Stdout, pq.Schema().GoType())
 			case "logical":
-				_, err = fmt.Fprintln(env.Stdout, goLogicalType(pq.Schema()))
+				s := goLogicalType(pq.Schema(), false).String()
+				_, err = fmt.Fprintln(env.Stdout, strings.ReplaceAll(s, " main.", " "))
 			}
 			return err
 		})
 	})
 }
 
-func printFile(ctx context.Context, env run.Environ, format DataFormat, head, tail int64, filter Filter, shape Shape, files []string) error {
+func printFile(ctx context.Context, env run.Environ, format DataFormat, head, tail int64, expr Filter, shape Shape, files []string) error {
 	return eachFile(files, func(name string) error {
 		return withReader(name, func(pq *parquetReader) error {
 			return withWriter(format, env.Stdout, func(write WriteFunc) error {
-				return eachRow(pq, head, tail, makeFilter(filter, (reshape(shape, pq, write))))
+				write, err := reshapeWrite(shape, pq, write)
+				if err != nil {
+					return err
+				}
+				write, err = filterWrite(expr, pq, write)
+				if err != nil {
+					return err
+				}
+				return eachRow(pq, head, tail, write)
 			})
 		})
 	})
@@ -144,27 +153,30 @@ type WriteCloser interface {
 }
 
 const filterHelp = `
-Specify the desired filter per the Flexera filter language:
+Specify the desired filter per the expr language, a go-like syntax.
+
+Full details at https://expr-lang.org/docs/language-definition
 
 Compare a dotted name to literals true/false/null, integers, dates, times, or strings.
-Values must match the type of the data to which they are compared.
+Values must generally match the type of the data to which they are compared.
+Dates, times, and timestamps can also be compared to properly formatted strings, integers (per their physical storage), and either date(...) or duration(...) values.
 
-Comparisons include eq (equality), ne (inequality), lt (less), gt (greater),
-le (less or equal), ge (greater or equal), co (contains), nc (not contains),
-in (member of), ni (not member of).
-Group comparisons with optional (), and tweak with a leading NOT, adjoining AND or OR.
+Comparisons include == (equality), != (inequality), < (less), > (greater),
+<= (less or equal), >= (greater or equal), in (membership)
+Group comparisons with optional (), and tweak with a leading ! (not), adjoining && (and) or || (or).
 
 Examples:
-  - a eq true OR b eq false
-  - a ne null
-  - a lt 'b'
-  - a le '2024-01-01T01:01:01.111Z'
-  - a gt '01:01:01.111Z'
-  - a ge '2024-01-01' AND a lt '2025-01-01'
-  - a co 'e' AND a nc 'f'
-  - a in [1, 2, 3]
-  - a ni ['d', 'e', 'f']
-  - NOT((a eq 1 AND b eq 2) OR (a eq 2 AND b eq 1))
+  - someBool == true || someBool == false
+  - some.nested.boolean || !some.other.boolean
+  - somePointer != nil
+  - someString < "b"
+  - timestamp < "2024-01-01T01:01:01.111Z"
+  - time > "01:01:01.111Z"
+  - day >= "2024-01-01" && date < "2025-01-01"
+  - indexOf(a, "e")!=-1 && indexOf(a, "f")==-1
+  - someInt in [1, 2, 3]
+  - !(someString in ["d", "e", "f"])
+  - !((anInt == 1 && otherInt == 2) || (anInt == 2 && otherInt == 1))
 `
 
 const shapeHelp = `
@@ -209,24 +221,6 @@ func withWriter(format DataFormat, w io.Writer, do func(WriteFunc) error) error 
 
 type WriteFunc func(reflect.Value) error
 
-func makeFilter(filter Filter, w WriteFunc) WriteFunc {
-	if filter == "" {
-		return w
-	}
-	f, err := ParseReflectFilter(string(filter))
-	if err != nil {
-		return func(reflect.Value) error { return err }
-	}
-	return func(v reflect.Value) error {
-		if include, err := f.Eval(v); err != nil {
-			return err
-		} else if include {
-			return w(v)
-		}
-		return nil
-	}
-}
-
 func eachFile(files []string, do func(name string) error) error {
 	for _, name := range files {
 		if err := do(name); err != nil {
@@ -270,7 +264,7 @@ func eachRow(pq *parquetReader, head, tail int64, do WriteFunc) error {
 	if stop > rows {
 		stop = rows
 	}
-	rowType := goLogicalType(pq.Schema())
+	rowType := goLogicalType(pq.Schema(), true)
 	v, z := reflect.New(rowType), reflect.Zero(rowType)
 
 	if start > 0 {
@@ -300,27 +294,27 @@ func eachRow(pq *parquetReader, head, tail int64, do WriteFunc) error {
 //
 // - Logical maps should use map[K]V instead of a (nested) slice of key-value structs
 // - Logical strings should use string instead of []uint8
-func goLogicalType(s *parquet.Schema) reflect.Type {
-	return reflect.StructOf(goLogicalTypeFields(s.Fields(), nil))
+func goLogicalType(s *parquet.Schema, tag bool) reflect.Type {
+	return reflect.StructOf(goLogicalTypeFields(s.Fields(), nil, tag))
 }
 
-func goLogicalTypeFields(flds []parquet.Field, path []string) []reflect.StructField {
+func goLogicalTypeFields(flds []parquet.Field, path []string, tag bool) []reflect.StructField {
 	sf := make([]reflect.StructField, len(flds))
 	for i, pf := range flds {
-		sf[i] = goLogicalTypeField(pf, append(path, pf.Name()))
+		sf[i] = goLogicalTypeField(pf, append(path, pf.Name()), tag)
 	}
 	return sf
 }
 
-func goLogicalTypeField(pf parquet.Field, path []string) reflect.StructField {
+func goLogicalTypeField(pf parquet.Field, path []string, tag bool) reflect.StructField {
 	name := pf.Name()
 	title := strings.ToTitle(name[:1]) + name[1:]
 	sf := reflect.StructField{
 		Name: title,
 		Type: pf.GoType(),
 	}
-	if name != title {
-		sf.Tag = reflect.StructTag(fmt.Sprintf("json:%[1]q parquet:%[1]q", name))
+	if name != title && tag {
+		sf.Tag = reflect.StructTag(fmt.Sprintf("json:%[1]q parquet:%[1]q expr:%[1]q", name))
 	}
 
 	if lt := pf.Type().LogicalType(); lt != nil {
@@ -329,7 +323,7 @@ func goLogicalTypeField(pf parquet.Field, path []string) reflect.StructField {
 			sf.Type = reflect.TypeFor[string]()
 		case lt.Map != nil:
 			kvs := pf.Fields()[0]
-			mapfields := goLogicalTypeFields(kvs.Fields(), append(path, kvs.Name()))
+			mapfields := goLogicalTypeFields(kvs.Fields(), append(path, kvs.Name()), tag)
 			sf.Type = reflect.MapOf(mapfields[0].Type, mapfields[1].Type)
 		case lt.Date != nil:
 			sf.Type = reflect.TypeFor[Date]()
@@ -377,7 +371,7 @@ func goLogicalTypeField(pf parquet.Field, path []string) reflect.StructField {
 			}
 		}
 	} else {
-		sf.Type = reflect.StructOf(goLogicalTypeFields(pf.Fields(), path))
+		sf.Type = reflect.StructOf(goLogicalTypeFields(pf.Fields(), path, tag))
 	}
 	return sf
 }
