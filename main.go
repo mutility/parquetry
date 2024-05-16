@@ -236,7 +236,19 @@ func withReader(name string, do func(*parquetReader) error) error {
 		return err
 	}
 	defer f.Close()
-	pq := parquet.NewReader(f)
+
+	stat, err := f.Stat()
+	if err != nil {
+		return err
+	}
+
+	pf, err := parquet.OpenFile(f, stat.Size())
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+
+	pq := parquet.NewReader(pf)
+
 	defer pq.Close()
 
 	return do(pq)
