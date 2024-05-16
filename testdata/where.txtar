@@ -15,7 +15,11 @@ stderr 'parquetry: error: unexpected token EOF'
 ! stdout .
 
 # alphav: only matching rows
-exec parquetry where 'A=="d" || A=="f"' alphav.parquet
+exec parquetry where 'A=="d" or A=="f"' alphav.parquet
+cmp stdout alphav.want
+
+# alphav: using operators
+exec parquetry where '"df" contains A' alphav.parquet
 cmp stdout alphav.want
 
 # alphav: transformative comparisons
@@ -23,11 +27,11 @@ exec parquetry where 'upper(A) in ["D", "F"]' alphav.parquet
 cmp stdout alphav.want
 
 # alphav: in specified format
-exec parquetry where -f jsonl 'A=="d" || A=="f"' alphav.parquet
+exec parquetry where -f jsonl 'A=="d" or A=="f"' alphav.parquet
 cmp stdout alphav.json
 
 # alphaw: include matching row
-exec parquetry where 'A=="f" || A=="a"' alphaw.parquet
+exec parquetry where 'A=="f" or A=="a"' alphaw.parquet
 cmp stdout alphaw.want
 
 # alphaw: reshaped
@@ -41,7 +45,7 @@ exec parquetry where 'A > C' alphaw.parquet
 ! stdout .
 
 # alphamapv
-exec parquetry where 'M.B==nil || M.B!="b"' alphamapv.parquet
+exec parquetry where 'M.B==nil or M.B!="b"' alphamapv.parquet
 cmp stdout alphamapv.want
 
 # alphamapw: matching row
@@ -64,7 +68,6 @@ cmp stdout dates-lt.want
 
 # dates can be compared by int days-since-epoch
 exec parquetry where 'Date == 1234' dates.parquet
-! stderr .
 cmp stdout dates-eq.want
 exec parquetry where 'Date > 1234' dates.parquet
 cmp stdout dates-gt.want
@@ -115,6 +118,66 @@ cmp stdout timestamps-3.want
 exec parquetry where 'Tns < 1519266142123456789' timestamps.parquet
 cmp stdout timestamps-1.want
 
+# syntax demo: always include/exclude
+exec parquetry where true example.parquet -f jsonl
+cmp stdout example-all.want
+exec parquetry where false example.parquet -f jsonl
+! stdout .
+# syntax demo: conditional inclusion
+exec parquetry where f example.parquet -f jsonl
+cmp stdout example-1.want
+exec parquetry where 'f==true' example.parquet -f jsonl
+cmp stdout example-1.want
+exec parquetry where '!f' example.parquet -f jsonl
+cmp stdout example-2.want
+exec parquetry where 'not f' example.parquet -f jsonl
+cmp stdout example-2.want
+# syntax demo: conditional inclusion
+exec parquetry where 'i < j && k >= i and j != k' example.parquet -f jsonl
+cmp stdout example-all.want
+# syntax demo: nil handling
+exec parquetry where 'pf != nil' example.parquet -f jsonl
+cmp stdout example-1.want
+exec parquetry where 'pf ?? true' example.parquet -f jsonl
+cmp stdout example-2.want
+exec parquetry where 'pf ?? false' example.parquet -f jsonl
+! stdout .
+# syntax demo: string comparisons
+exec parquetry where 'rs < "b"' example.parquet -f jsonl
+cmp stdout example-all.want
+exec parquetry where 'rs contains "y"' example.parquet -f jsonl
+cmp stdout example-2.want
+# syntax demo: date handling
+exec parquetry where 'w.d == "1971-07-10"' example.parquet -f jsonl
+cmp stdout example-1.want
+exec parquetry where 'w.d == 555' example.parquet -f jsonl
+cmp stdout example-1.want
+# syntax demo: time comparisons
+exec parquetry where 'w.t == "666ms"' example.parquet -f jsonl
+cmp stdout example-1.want
+exec parquetry where 'w.t == duration("666ms")' example.parquet -f jsonl
+cmp stdout example-1.want
+exec parquetry where 'w.t == 666' example.parquet -f jsonl
+cmp stdout example-1.want
+# syntax demo: timestamp comparisons
+exec parquetry where 'w.s == "1970-01-01T00:00:00.777Z"' example.parquet -f jsonl
+cmp stdout example-1.want
+exec parquetry where 'w.s == 777' example.parquet -f jsonl
+cmp stdout example-1.want
+# syntax demo: membership
+exec parquetry where 'i in [1,2,3,4]' example.parquet -f jsonl
+cmp stdout example-all.want
+exec parquetry where 'rs in ["aeiou"]' example.parquet -f jsonl
+cmp stdout example-1.want
+# syntax demo: combining
+exec parquetry where ' not(i < j and (rs contains "q" || rs == "u"))' example.parquet -f jsonl
+cmp stdout example-all.want
+
+
+# syntax failures: to be researched.
+! exec parquetry where 'w.d == date("1971-07-10")' example.parquet -f jsonl
+! exec parquetry where 'w.s == date("1970-01-01T00:00:00.777Z")' example.parquet -f jsonl
+
 -- alphav.want --
 {A:d}
 {A:f}
@@ -146,3 +209,10 @@ cmp stdout timestamps-1.want
 {Sms:2018-02-22T02:22:22.123Z Sus:2018-02-22T02:22:22.123456Z Sns:2018-02-22T02:22:22.123456789Z Tms:2018-02-22T02:22:22.123Z Tus:2018-02-22T02:22:22.123456Z Tns:2018-02-22T02:22:22.123456789Z}
 -- timestamps-3.want --
 {Sms:2024-12-18T09:23:19.123Z Sus:2024-12-18T09:23:19.123456Z Sns:2024-12-18T09:23:19.123456789Z Tms:2024-12-18T09:23:19.123Z Tus:2024-12-18T09:23:19.123456Z Tns:2024-12-18T09:23:19.123456789Z}
+-- example-all.want --
+{"f":true,"pf":false,"i":3,"j":6,"k":9,"m":{"hello":"world"},"ps":null,"rs":"aeiou","w":{"d":"1971-07-10","t":"00:00:00.666Z","s":"1970-01-01T00:00:00.777Z"}}
+{"f":false,"pf":null,"i":2,"j":4,"k":6,"m":{"prop":"val"},"ps":"ptr","rs":"aeiouy","w":{"d":"1972-06-07","t":"00:00:00.999Z","s":"1970-01-01T00:00:01Z"}}
+-- example-1.want --
+{"f":true,"pf":false,"i":3,"j":6,"k":9,"m":{"hello":"world"},"ps":null,"rs":"aeiou","w":{"d":"1971-07-10","t":"00:00:00.666Z","s":"1970-01-01T00:00:00.777Z"}}
+-- example-2.want --
+{"f":false,"pf":null,"i":2,"j":4,"k":6,"m":{"prop":"val"},"ps":"ptr","rs":"aeiouy","w":{"d":"1972-06-07","t":"00:00:00.999Z","s":"1970-01-01T00:00:01Z"}}

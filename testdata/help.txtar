@@ -260,32 +260,47 @@ Usage: parquetry where [flags] <filter> <file> ...
 
 Filter a parquet file
 
-Specify the desired filter per the expr language, a go-like syntax.
+Specify the desired filter per the expr language, a go-like syntax. Records for
+which the expression evaluates to true will be included in the output.
 
-Full details at https://expr-lang.org/docs/language-definition
+  - Comparisons include: == != < <= > >= in contains matches
+  - Logical algebra includes: ! not && and || or
+  - Precedence can be overridden with: (…)
+  - Values include: true false nil 42 1.4 "hi" [1, 2] {a: 1, b: 2}
+  - Fields and nested fields are referenced by name: a b.c
 
-Compare a dotted name to literals true/false/null, integers, dates, times,
-or strings. Values must generally match the type of the data to which they
-are compared. Dates, times, and timestamps can also be compared to properly
-formatted strings, integers (per their physical storage), and either date(...)
-or duration(...) values.
+Expressions are evaluated in the context of each row of the parquet file.
+Each logical field is available using its name from the schema with the type in
+the logical schema. The names are case sensitive and remain lowercase even when
+the logical schema has capitalized them. Logical dates, times, and timestamps
+can be compared to others of the same type, to integers matching their physical
+storage, or to strings representing their value. Times can be represented
+duration strings (10h3m2.1s).
 
-Comparisons include == (equality), != (inequality), < (less), > (greater), <=
-(less or equal), >= (greater or equal), in (membership) Group comparisons with
-optional (), and tweak with a leading ! (not), adjoining && (and) or || (or).
+Reference https://expr-lang.org/docs/language-definition for full details.
 
-Examples:
-  - someBool == true || someBool == false
-  - some.nested.boolean || !some.other.boolean
-  - somePointer != nil
-  - someString < "b"
-  - timestamp < "2024-01-01T01:01:01.111Z"
-  - time > "01:01:01.111Z"
-  - day >= "2024-01-01" && date < "2025-01-01"
-  - indexOf(a, "e")!=-1 && indexOf(a, "f")==-1
-  - someInt in [1, 2, 3]
-  - !(someString in ["d", "e", "f"])
-  - !((anInt == 1 && otherInt == 2) || (anInt == 2 && otherInt == 1))
+Given a parquet file with lowercase names and logical schema:
+
+    struct {
+    	F bool; Pf *bool
+    	I, J, K int32
+    	M map[string]string
+    	Ps, Rs string
+    	W struct { D Date; T TimeMilliUTC; S StampMilliUTC }
+    }
+
+Examples include:
+
+  - true; false // always include/exclude
+  - f; f == true; !f; not f // conditional inclusion
+  - i < j; k >= i; j != k // comparisons in the record
+  - pf != nil; pf ?? true // nil handling, coalescing
+  - rs < "b"; rs contains "y" // string comparisons
+  - i in [1,2]; rs in ["a","b"] // membership checks
+  - not(i < j and (rs contains "q" || rs == "u"))
+  - w.d == "2024-01-01"; w.d > 7300 // (days since epoch)
+  - w.t == "14:22:59"; w.t > "13h"; w.t < 1234 // (since midnight)
+  - w.s < "2024-01-01T01:01:01.111Z"; w.s > 123456789 // (since epoch)
 
 Arguments:
   <filter>      Include rows matching FILTER
