@@ -12,7 +12,7 @@ import (
 
 	"github.com/parquet-go/parquet-go"
 
-	"github.com/mutility/parquetry/run"
+	"github.com/mutility/cli/run"
 )
 
 type parquetReader = parquet.Reader //nolint:staticcheck
