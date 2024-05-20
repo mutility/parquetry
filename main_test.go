@@ -7,16 +7,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mutility/cli/run"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
 func TestMain(m *testing.M) {
 	os.Exit(testscript.RunMain(m, map[string]func() int{
 		"parquetry": func() int {
-			if err := Run(); err != nil {
-				return 1
-			}
-			return 0
+			return run.Main(runEnv)
 		},
 	}))
 }
