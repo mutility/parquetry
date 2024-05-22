@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/dustin/go-humanize"
 	"github.com/mutility/cli/run"
 	"github.com/parquet-go/parquet-go"
 )
@@ -77,7 +78,12 @@ func runEnv(env run.Environ) error {
 			printOne,
 		),
 
-		run.MustCmd("schema", "Print a parquet schema",
+		run.MustCmd("meta", "Print parquet metadata",
+			files.Args("file"),
+			run.Handler2(printMeta, files, run.Pass(typer)),
+		),
+
+		run.MustCmd("schema", "Print parquet schema",
 			schemaFmt.Flags('f', "format", "").Default("message"),
 			files.Args("file"),
 			run.Handler3(printSchema, schemaFmt, files, run.Pass(typer)),
@@ -109,6 +115,34 @@ func runEnv(env run.Environ) error {
 		app.Ferror(env.Stderr, err)
 	}
 	return err
+}
+
+func printMeta(ctx run.Context, files []string, typer *schemata) error {
+	return eachFile(files, func(name string) error {
+		return withFile(name, func(pf *parquet.File) (err error) {
+			m := pf.Metadata()
+			if len(files) > 1 {
+				fmt.Fprintln(ctx.Stdout, name+":")
+			}
+			fmt.Fprintln(ctx.Stdout, "created by:", m.CreatedBy)
+			fmt.Fprintln(ctx.Stdout, "format:", m.Version)
+			fmt.Fprintln(ctx.Stdout, "columns:", m.Schema[0].NumChildren)
+			fmt.Fprintln(ctx.Stdout, "rows:", m.NumRows)
+			fmt.Fprintln(ctx.Stdout, "row groups:", len(m.RowGroups))
+			for _, rg := range m.RowGroups {
+				if rg.TotalByteSize != rg.TotalCompressedSize {
+					fmt.Fprintf(ctx.Stdout, "  %d: %s (%s in file) at offset %x\n", rg.Ordinal, humanize.IBytes(uint64(rg.TotalByteSize)), humanize.IBytes(uint64(rg.TotalCompressedSize)), rg.FileOffset)
+				} else {
+					fmt.Fprintf(ctx.Stdout, "  %d: %s at offset %x\n", rg.Ordinal, humanize.IBytes(uint64(rg.TotalByteSize)), rg.FileOffset)
+				}
+			}
+			for _, kvm := range m.KeyValueMetadata {
+				fmt.Fprintln(ctx.Stdout, "meta:", kvm.Key, "=", kvm.Value)
+			}
+
+			return nil
+		})
+	})
 }
 
 func printSchema(ctx run.Context, format SchemaFormat, files []string, typer *schemata) error {
@@ -254,7 +288,7 @@ func eachFile(files []string, do func(name string) error) error {
 	return nil
 }
 
-func withReader(name string, do func(*parquetReader) error) error {
+func withFile(name string, do func(*parquet.File) error) error {
 	f, err := os.Open(name)
 	if err != nil {
 		return err
@@ -271,11 +305,15 @@ func withReader(name string, do func(*parquetReader) error) error {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 
-	pq := parquet.NewReader(pf)
+	return do(pf)
+}
 
-	defer pq.Close()
-
-	return do(pq)
+func withReader(name string, do func(*parquetReader) error) error {
+	return withFile(name, func(pf *parquet.File) error {
+		pq := parquet.NewReader(pf)
+		defer pq.Close()
+		return do(pq)
+	})
 }
 
 func eachRow(pq *parquetReader, head, tail int64, rowType reflect.Type, do WriteFunc) error {

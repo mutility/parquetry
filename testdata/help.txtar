@@ -23,6 +23,11 @@ exec parquetry tail --help
 ! stderr .
 cmp stdout help.tail
 
+# help for meta
+exec parquetry meta --help
+! stderr .
+cmp stdout help.meta
+
 # help for schema
 exec parquetry schema --help
 ! stderr .
@@ -84,6 +89,12 @@ cmp stdout help.tail
 stderr 'parquetry: error: tail: expected "<file>"'
 trim stdout # errors include an extra line to separate the stderr message
 cmp stdout help.tail
+
+# help on errors: meta
+! exec parquetry meta
+stderr 'parquetry: error: meta: expected "<file> ..."'
+trim stdout # errors include an extra line to separate the stderr message
+cmp stdout help.meta
 
 # help on errors: schema
 ! exec parquetry schema
@@ -160,7 +171,8 @@ Commands:
   cat        Print a parquet file
   head       Print (or skip) the beginning of a parquet file
   tail       Print (or skip) the ending of a parquet file
-  schema     Print a parquet schema
+  meta       Print parquet metadata
+  schema     Print parquet schema
   to         Convert parquet to...
   where      Filter a parquet file
   reshape    Reshape a parquet file
@@ -203,10 +215,20 @@ Arguments:
 Flags:
   -h, --help         Show context-sensitive help.
   -f, --format=go    Output as go, csv, json, or jsonl
+-- help.meta --
+Usage: parquetry meta <file> ...
+
+Print parquet metadata
+
+Arguments:
+  <file> ...    Parquet files
+
+Flags:
+  -h, --help    Show context-sensitive help.
 -- help.schema --
 Usage: parquetry schema [flags] <file> ...
 
-Print a parquet schema
+Print parquet schema
 
 Arguments:
   <file> ...    Parquet files

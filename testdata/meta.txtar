@@ -1,0 +1,88 @@
+# missing files should be reported and fail
+! exec parquetry meta missing.parquet
+stderr 'missing.parquet: no such file or directory'
+
+# alphav
+exec parquetry meta alphav.parquet
+! stderr .
+cmp stdout alphav.meta
+
+# alphaw
+exec parquetry meta alphaw.parquet
+! stderr .
+cmp stdout alphaw.meta
+
+# alphamapv
+exec parquetry meta alphamapv.parquet
+! stderr .
+cmp stdout alphamapv.meta
+
+# alphamapw
+exec parquetry meta alphamapw.parquet
+! stderr .
+cmp stdout alphamapw.meta
+
+# dates
+exec parquetry meta dates.parquet
+! stderr .
+cmp stdout dates.meta
+
+# times
+exec parquetry meta times.parquet
+! stderr .
+cmp stdout times.meta
+
+# timestamps
+exec parquetry meta timestamps.parquet
+! stderr .
+cmp stdout timestamps.meta
+
+-- alphav.meta --
+created by: github.com/parquet-go/parquet-go
+format: 1
+columns: 1
+rows: 7
+row groups: 1
+  0: 49 B at offset 4
+-- alphaw.meta --
+created by: github.com/parquet-go/parquet-go
+format: 1
+columns: 7
+rows: 1
+row groups: 1
+  0: 236 B at offset 4
+-- alphamapv.meta --
+created by: github.com/parquet-go/parquet-go
+format: 1
+columns: 1
+rows: 3
+row groups: 1
+  0: 98 B at offset 4
+-- alphamapw.meta --
+created by: github.com/parquet-go/parquet-go
+format: 1
+columns: 1
+rows: 1
+row groups: 1
+  0: 102 B at offset 4
+-- dates.meta --
+created by: github.com/parquet-go/parquet-go
+format: 1
+columns: 1
+rows: 3
+row groups: 1
+  0: 40 B at offset 4
+-- times.meta --
+created by: github.com/parquet-go/parquet-go
+format: 1
+columns: 3
+rows: 2
+row groups: 1
+  0: 124 B at offset 4
+-- timestamps.meta --
+created by: github.com/parquet-go/parquet-go
+format: 1
+columns: 6
+rows: 3
+row groups: 1
+  0: 312 B at offset 4
