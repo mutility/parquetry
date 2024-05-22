@@ -37,7 +37,10 @@ func runEnv(env run.Environ) error {
 		{Name: "p", Value: "physical"},
 	}
 
-	schema := run.NamedOf("format", "Output schema as message or logical/physical struct", schemaFormats)
+	typer := new(schemata)
+	stringify := run.EnablerVar(&typer.Stringify, "string", "Treat all []uint as string.", true)
+
+	schemaFmt := run.NamedOf("format", "Output schema as message or logical/physical struct", schemaFormats)
 	outFmt := run.StringOf[DataFormat]("format", "Output as go, csv, json, or jsonl", "go", "csv", "json", "jsonl")
 	head := run.IntLike[int64]("head", "Include first n or skip first -n rows", 0)
 	tail := run.IntLike[int64]("tail", "Include last n or skip last -n rows", 0)
@@ -51,10 +54,11 @@ func runEnv(env run.Environ) error {
 	tailFlag := tail.Flags(0, "tail", "n|-n")
 	dataFlag := outFmt.Flags('f', "format", "").Default("go")
 
-	printOne := run.Handler6(printFile, outFmt, head, tail, filter, shape, file.Slice())
-	printMany := run.Handler6(printFile, outFmt, head, tail, filter, shape, files)
+	printOne := run.Handler7(printFile, outFmt, head, tail, filter, shape, file.Slice(), run.Pass(typer))
+	printMany := run.Handler7(printFile, outFmt, head, tail, filter, shape, files, run.Pass(typer))
 
 	app := run.MustApp("parquetry", "Tooling for parquet files",
+		stringify.Flag(),
 		run.MustCmd("cat", "Print a parquet file",
 			dataFlag, headFlag, tailFlag,
 			files.Args("file"),
@@ -74,9 +78,9 @@ func runEnv(env run.Environ) error {
 		),
 
 		run.MustCmd("schema", "Print a parquet schema",
-			schema.Flags('f', "format", "").Default("message"),
+			schemaFmt.Flags('f', "format", "").Default("message"),
 			files.Args("file"),
-			run.Handler2(printSchema, schema, files),
+			run.Handler3(printSchema, schemaFmt, files, run.Pass(typer)),
 		),
 
 		run.MustCmd("to", "Convert parquet to...",
@@ -107,7 +111,7 @@ func runEnv(env run.Environ) error {
 	return err
 }
 
-func printSchema(ctx run.Context, format SchemaFormat, files []string) error {
+func printSchema(ctx run.Context, format SchemaFormat, files []string, typer *schemata) error {
 	return eachFile(files, func(name string) error {
 		return withReader(name, func(pq *parquetReader) (err error) {
 			var schema any
@@ -117,7 +121,7 @@ func printSchema(ctx run.Context, format SchemaFormat, files []string) error {
 			case "physical":
 				schema = pq.Schema().GoType()
 			case "logical":
-				s := goLogicalType(pq.Schema(), false).String()
+				s := typer.Logical(pq.Schema()).String()
 				schema = strings.ReplaceAll(s, " main.", " ")
 			}
 			if len(files) > 1 {
@@ -130,19 +134,20 @@ func printSchema(ctx run.Context, format SchemaFormat, files []string) error {
 	})
 }
 
-func printFile(ctx run.Context, format DataFormat, head, tail int64, expr Filter, shape Shape, files []string) error {
+func printFile(ctx run.Context, format DataFormat, head, tail int64, expr Filter, shape Shape, files []string, typer *schemata) error {
 	return eachFile(files, func(name string) error {
 		return withReader(name, func(pq *parquetReader) error {
 			return withWriter(format, ctx.Stdout, func(write WriteFunc) error {
-				write, err := reshapeWrite(shape, pq, write)
+				rowType := typer.LogicalTagged(pq.Schema())
+				write, err := reshapeWrite(shape, rowType, write)
 				if err != nil {
 					return err
 				}
-				write, err = filterWrite(expr, pq, write)
+				write, err = filterWrite(expr, rowType, write)
 				if err != nil {
 					return err
 				}
-				return eachRow(pq, head, tail, write)
+				return eachRow(pq, head, tail, rowType, write)
 			})
 		})
 	})
@@ -273,7 +278,7 @@ func withReader(name string, do func(*parquetReader) error) error {
 	return do(pq)
 }
 
-func eachRow(pq *parquetReader, head, tail int64, do WriteFunc) error {
+func eachRow(pq *parquetReader, head, tail int64, rowType reflect.Type, do WriteFunc) error {
 	rows := pq.NumRows()
 	var start, stop int64 = 0, rows
 
@@ -295,7 +300,6 @@ func eachRow(pq *parquetReader, head, tail int64, do WriteFunc) error {
 	if stop > rows {
 		stop = rows
 	}
-	rowType := goLogicalType(pq.Schema(), true)
 	v, z := reflect.New(rowType), reflect.Zero(rowType)
 
 	if start > 0 {
@@ -318,33 +322,49 @@ func eachRow(pq *parquetReader, head, tail int64, do WriteFunc) error {
 	return nil
 }
 
-// goLogicalType returns a more useful type than s.GoType()
+type schemata struct {
+	Stringify bool
+	Tagged    bool
+}
+
+// Logical returns a useful go type
 //
 // s.GoType returns a struct corresponding to the physical structure of the parquet file.
 // However logical types can be handled better. In particular...
 //
 // - Logical maps should use map[K]V instead of a (nested) slice of key-value structs
 // - Logical strings should use string instead of []uint8
-func goLogicalType(s *parquet.Schema, tag bool) reflect.Type {
-	return reflect.StructOf(goLogicalTypeFields(s.Fields(), nil, tag))
+// - If Stringify is true, even non-logical string []uint8 fields become strings
+func (s schemata) Logical(schema *parquet.Schema) reflect.Type {
+	s.Tagged = false
+	return s.logical(schema)
 }
 
-func goLogicalTypeFields(flds []parquet.Field, path []string, tag bool) []reflect.StructField {
+func (s schemata) LogicalTagged(schema *parquet.Schema) reflect.Type {
+	s.Tagged = true
+	return s.logical(schema)
+}
+
+func (s schemata) logical(schema *parquet.Schema) reflect.Type {
+	return reflect.StructOf(s.logicalTypeFields(schema.Fields(), nil))
+}
+
+func (s schemata) logicalTypeFields(flds []parquet.Field, path []string) []reflect.StructField {
 	sf := make([]reflect.StructField, len(flds))
 	for i, pf := range flds {
-		sf[i] = goLogicalTypeField(pf, append(path, pf.Name()), tag)
+		sf[i] = s.logicalTypeField(pf, append(path, pf.Name()))
 	}
 	return sf
 }
 
-func goLogicalTypeField(pf parquet.Field, path []string, tag bool) reflect.StructField {
+func (s schemata) logicalTypeField(pf parquet.Field, path []string) reflect.StructField {
 	name := pf.Name()
 	title := strings.ToTitle(name[:1]) + name[1:]
 	sf := reflect.StructField{
 		Name: title,
 		Type: pf.GoType(),
 	}
-	if name != title && tag {
+	if name != title && s.Tagged {
 		sf.Tag = reflect.StructTag(fmt.Sprintf("json:%[1]q parquet:%[1]q expr:%[1]q", name))
 	}
 
@@ -354,7 +374,7 @@ func goLogicalTypeField(pf parquet.Field, path []string, tag bool) reflect.Struc
 			sf.Type = reflect.TypeFor[string]()
 		case lt.Map != nil:
 			kvs := pf.Fields()[0]
-			mapfields := goLogicalTypeFields(kvs.Fields(), append(path, kvs.Name()), tag)
+			mapfields := s.logicalTypeFields(kvs.Fields(), append(path, kvs.Name()))
 			sf.Type = reflect.MapOf(mapfields[0].Type, mapfields[1].Type)
 		case lt.Date != nil:
 			sf.Type = reflect.TypeFor[Date]()
@@ -402,7 +422,9 @@ func goLogicalTypeField(pf parquet.Field, path []string, tag bool) reflect.Struc
 			}
 		}
 	} else if !pf.Leaf() {
-		sf.Type = reflect.StructOf(goLogicalTypeFields(pf.Fields(), path, tag))
+		sf.Type = reflect.StructOf(s.logicalTypeFields(pf.Fields(), path))
+	} else if s.Stringify && pf.GoType() == reflect.TypeFor[[]byte]() {
+		sf.Type = reflect.TypeFor[string]()
 	}
 	if k := sf.Type.Kind(); pf.Optional() && k != reflect.Pointer && k != reflect.Map {
 		sf.Type = reflect.PointerTo(sf.Type)

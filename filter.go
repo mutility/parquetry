@@ -8,11 +8,11 @@ import (
 	"github.com/expr-lang/expr"
 )
 
-func filterWrite(filter Filter, pq *parquetReader, w WriteFunc) (WriteFunc, error) {
+func filterWrite(filter Filter, rowType reflect.Type, w WriteFunc) (WriteFunc, error) {
 	if filter == "" {
 		return w, nil
 	}
-	env := reflect.New(goLogicalType(pq.Schema(), true)).Elem().Interface()
+	env := reflect.New(rowType).Elem().Interface()
 
 	match, err := expr.Compile(
 		string(filter),

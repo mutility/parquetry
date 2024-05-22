@@ -9,11 +9,11 @@ import (
 	"github.com/alecthomas/participle/v2/lexer"
 )
 
-func reshapeWrite(shape Shape, pq *parquetReader, w WriteFunc) (WriteFunc, error) {
+func reshapeWrite(shape Shape, rowType reflect.Type, w WriteFunc) (WriteFunc, error) {
 	if shape == "" {
 		return w, nil
 	}
-	reshape, err := ParseShape(shape, goLogicalType(pq.Schema(), true))
+	reshape, err := ParseShape(shape, rowType)
 	if err != nil {
 		return w, err
 	}

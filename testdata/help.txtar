@@ -153,7 +153,8 @@ Usage: parquetry <command> [flags]
 Tooling for parquet files
 
 Flags:
-  -h, --help    Show context-sensitive help.
+  -h, --help      Show context-sensitive help.
+      --string    Treat all []uint as string.
 
 Commands:
   cat        Print a parquet file
