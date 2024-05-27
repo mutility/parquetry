@@ -5,7 +5,7 @@ go 1.22.1
 require (
 	github.com/alecthomas/participle/v2 v2.1.1
 	github.com/dustin/go-humanize v1.0.1
-	github.com/expr-lang/expr v1.16.7
+	github.com/expr-lang/expr v1.16.9
 	github.com/mutility/cli v0.0.0-20240522180618-9cd49fd46400
 	github.com/parquet-go/parquet-go v0.21.1-0.20240501160520-b3c3a0c3ed6f
 	github.com/rogpeppe/go-internal v1.12.0
