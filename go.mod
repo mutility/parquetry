@@ -8,7 +8,7 @@ require (
 	github.com/expr-lang/expr v1.16.9
 	github.com/mutility/cli v0.0.0-20240522180618-9cd49fd46400
 	github.com/parquet-go/parquet-go v0.23.0
-	github.com/rogpeppe/go-internal v1.12.0
+	github.com/rogpeppe/go-internal v1.13.1
 )
 
 require (
@@ -23,5 +23,5 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/segmentio/encoding v0.4.0 // indirect
 	golang.org/x/sys v0.21.0 // indirect
-	golang.org/x/tools v0.1.12 // indirect
+	golang.org/x/tools v0.22.0 // indirect
 )
