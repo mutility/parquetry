@@ -7,7 +7,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/expr-lang/expr v1.16.9
 	github.com/mutility/cli v0.0.0-20240522180618-9cd49fd46400
-	github.com/parquet-go/parquet-go v0.24.0
+	github.com/parquet-go/parquet-go v0.25.0
 	github.com/rogpeppe/go-internal v1.14.1
 )
 
