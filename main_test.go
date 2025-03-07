@@ -12,11 +12,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(testscript.RunMain(m, map[string]func() int{
-		"parquetry": func() int {
-			return run.Main(runEnv)
+	testscript.Main(m, map[string]func(){
+		"parquetry": func() {
+			os.Exit(run.Main(runEnv))
 		},
-	}))
+	})
 }
 
 func Test(t *testing.T) {
