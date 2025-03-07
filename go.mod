@@ -1,7 +1,6 @@
 module github.com/mutility/parquetry
 
-go 1.22.1
-toolchain go1.23.6
+go 1.24
 
 require (
 	github.com/alecthomas/participle/v2 v2.1.1
