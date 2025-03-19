@@ -3,7 +3,7 @@ module github.com/mutility/parquetry
 go 1.24
 
 require (
-	github.com/alecthomas/participle/v2 v2.1.1
+	github.com/alecthomas/participle/v2 v2.1.2
 	github.com/dustin/go-humanize v1.0.1
 	github.com/expr-lang/expr v1.17.0
 	github.com/mutility/cli v0.0.0-20240522180618-9cd49fd46400
@@ -12,8 +12,6 @@ require (
 )
 
 require (
-	github.com/alecthomas/assert/v2 v2.6.0 // indirect
-	github.com/alecthomas/repr v0.4.0 // indirect
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
