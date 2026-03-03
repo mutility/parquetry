@@ -104,7 +104,7 @@ message {
 -- alphav.log --
 struct { A string }
 -- alphav.phy --
-struct { A []uint8 }
+struct { A []uint8 "parquet:\"A\"" }
 -- alphaw.msg --
 message {
 	required binary A (STRING);
@@ -129,7 +129,7 @@ message {
 -- alphamapv.log --
 struct { M map[string]string }
 -- alphamapv.phy --
-struct { M struct { Key_value []struct { Key []uint8; Value []uint8 } } }
+struct { M struct { Key_value []struct { Key []uint8 "parquet:\"key\""; Value []uint8 "parquet:\"value\"" } "parquet:\"key_value\"" } "parquet:\"M\"" }
 -- alphamapw.msg --
 message {
 	required group M (MAP) {
@@ -148,7 +148,7 @@ message {
 -- dates.log --
 struct { Date Date }
 -- dates.phy --
-struct { Date int32 }
+struct { Date int32 "parquet:\"Date\"" }
 -- times.msg --
 message {
 	required int32 ms (TIME(isAdjustedToUTC=true,unit=MILLIS));
@@ -158,7 +158,7 @@ message {
 -- times.log --
 struct { Ms TimeMilliUTC; Us TimeMicroUTC; Ns TimeNanoUTC }
 -- times.phy --
-struct { Ms int32; Us int64; Ns int64 }
+struct { Ms int32 "parquet:\"ms\""; Us int64 "parquet:\"us\""; Ns int64 "parquet:\"ns\"" }
 -- timestamps.msg --
 message {
 	required int64 Sms (TIMESTAMP(isAdjustedToUTC=true,unit=MILLIS));
@@ -171,4 +171,4 @@ message {
 -- timestamps.log --
 struct { Sms StampMilliUTC; Sus StampMicroUTC; Sns StampNanoUTC; Tms StampMilliUTC; Tus StampMicroUTC; Tns StampNanoUTC }
 -- timestamps.phy --
-struct { Sms int64; Sus int64; Sns int64; Tms int64; Tus int64; Tns int64 }
+struct { Sms int64 "parquet:\"Sms\""; Sus int64 "parquet:\"Sus\""; Sns int64 "parquet:\"Sns\""; Tms int64 "parquet:\"Tms\""; Tus int64 "parquet:\"Tus\""; Tns int64 "parquet:\"Tns\"" }
