@@ -126,7 +126,9 @@ func printMeta(ctx run.Context, files []string, typer *schemata) error {
 			}
 			fmt.Fprintln(ctx.Stdout, "created by:", m.CreatedBy)
 			fmt.Fprintln(ctx.Stdout, "format:", m.Version)
-			fmt.Fprintln(ctx.Stdout, "columns:", m.Schema[0].NumChildren)
+			if m.Schema[0].NumChildren != nil {
+				fmt.Fprintln(ctx.Stdout, "columns:", *m.Schema[0].NumChildren)
+			}
 			fmt.Fprintln(ctx.Stdout, "rows:", m.NumRows)
 			fmt.Fprintln(ctx.Stdout, "row groups:", len(m.RowGroups))
 			for _, rg := range m.RowGroups {
