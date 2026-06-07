@@ -1,6 +1,6 @@
 module github.com/mutility/parquetry
 
-go 1.24.9
+go 1.25
 
 require (
 	github.com/alecthomas/participle/v2 v2.1.4
@@ -8,7 +8,7 @@ require (
 	github.com/expr-lang/expr v1.17.8
 	github.com/mutility/cli v0.0.0-20240522180618-9cd49fd46400
 	github.com/parquet-go/parquet-go v0.30.1
-	github.com/rogpeppe/go-internal v1.14.1
+	github.com/rogpeppe/go-internal v1.15.0
 )
 
 require (
