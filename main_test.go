@@ -53,7 +53,13 @@ func Test(t *testing.T) {
 			}
 			for _, td := range tds {
 				if strings.HasSuffix(td.Name(), ".parquet") {
-					if err := os.Link(filepath.Join(pqs, td.Name()), filepath.Join(e.WorkDir, td.Name())); err != nil {
+					src, dest := filepath.Join(pqs, td.Name()), filepath.Join(e.WorkDir, td.Name())
+					if err := os.Link(src, dest); err != nil {
+						if absSrc, absErr := filepath.Abs(filepath.Join(pqs, td.Name())); absErr == nil {
+							if os.Symlink(absSrc, filepath.Join(e.WorkDir, td.Name())) == nil {
+								continue
+							}
+						}
 						return err
 					}
 				}
