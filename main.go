@@ -13,6 +13,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/mutility/cli/run"
 	"github.com/parquet-go/parquet-go"
+	"github.com/parquet-go/parquet-go/format"
 )
 
 type parquetReader = parquet.Reader //nolint:staticcheck
@@ -58,51 +59,60 @@ func runEnv(env run.Environ) error {
 	printOne := run.Handler7(printFile, outFmt, head, tail, filter, shape, file.Slice(), run.Pass(typer))
 	printMany := run.Handler7(printFile, outFmt, head, tail, filter, shape, files, run.Pass(typer))
 
-	app := run.MustApp("parquetry", "Tooling for parquet files",
+	app := run.MustApp(
+		"parquetry", "Tooling for parquet files",
 		stringify.Flag(),
-		run.MustCmd("cat", "Print a parquet file",
+		run.MustCmd(
+			"cat", "Print a parquet file",
 			dataFlag, headFlag, tailFlag,
 			files.Args("file"),
 			printMany,
 		),
 
-		run.MustCmd("head", "Print (or skip) the beginning of a parquet file",
+		run.MustCmd(
+			"head", "Print (or skip) the beginning of a parquet file",
 			dataFlag,
 			head.Arg("rows"), file.Arg("file"),
 			printOne,
 		),
 
-		run.MustCmd("tail", "Print (or skip) the ending of a parquet file",
+		run.MustCmd(
+			"tail", "Print (or skip) the ending of a parquet file",
 			dataFlag,
 			tail.Arg("rows"), file.Arg("file"),
 			printOne,
 		),
 
-		run.MustCmd("meta", "Print parquet metadata",
+		run.MustCmd(
+			"meta", "Print parquet metadata",
 			files.Args("file"),
 			run.Handler2(printMeta, files, run.Pass(typer)),
 		),
 
-		run.MustCmd("schema", "Print parquet schema",
+		run.MustCmd(
+			"schema", "Print parquet schema",
 			schemaFmt.Flags('f', "format", "").Default("message"),
 			files.Args("file"),
 			run.Handler3(printSchema, schemaFmt, files, run.Pass(typer)),
 		),
 
-		run.MustCmd("to", "Convert parquet to...",
+		run.MustCmd(
+			"to", "Convert parquet to...",
 			headFlag, tailFlag,
 			outFmt.Arg("format"), files.Args("file"),
 			printMany,
 		),
 
-		run.MustCmd("where", "Filter a parquet file",
+		run.MustCmd(
+			"where", "Filter a parquet file",
 			dataFlag, shape.Flags('x', "shape", "SHAPE"),
 			filter.Arg("filter"), files.Args("file"),
 			run.DetailsFor(filterHelp, filter),
 			printMany,
 		),
 
-		run.MustCmd("reshape", "Reshape a parquet file",
+		run.MustCmd(
+			"reshape", "Reshape a parquet file",
 			dataFlag, filter.Flags('m', "filter", "FILTER"),
 			shape.Arg("shape"), files.Args("file"),
 			run.DetailsFor(shapeHelp, shape),
@@ -409,52 +419,83 @@ func (s schemata) logicalTypeField(pf parquet.Field, path []string) reflect.Stru
 	}
 
 	if lt := pf.Type().LogicalType(); lt != nil {
-		switch {
-		case lt.UTF8 != nil:
+		switch lt := lt.Value.(type) {
+		case *format.StringType, *format.EnumType, *format.JsonType:
 			sf.Type = reflect.TypeFor[string]()
-		case lt.Map != nil:
+		case *format.UUIDType:
+			sf.Type = reflect.TypeFor[[16]byte]()
+		case *format.IntType:
+			switch lt.BitWidth {
+			case 8:
+				if lt.IsSigned {
+					sf.Type = reflect.TypeFor[int8]()
+				} else {
+					sf.Type = reflect.TypeFor[uint8]()
+				}
+			case 16:
+				if lt.IsSigned {
+					sf.Type = reflect.TypeFor[int16]()
+				} else {
+					sf.Type = reflect.TypeFor[uint16]()
+				}
+			case 32:
+				if lt.IsSigned {
+					sf.Type = reflect.TypeFor[int32]()
+				} else {
+					sf.Type = reflect.TypeFor[uint32]()
+				}
+			case 64:
+				if lt.IsSigned {
+					sf.Type = reflect.TypeFor[int64]()
+				} else {
+					sf.Type = reflect.TypeFor[uint64]()
+				}
+			}
+		case *format.DecimalType:
+			// ideally would map to *big.Int or big.Rat, but those won't de/serialize
+		case *format.MapType:
 			kvs := pf.Fields()[0]
 			mapfields := s.logicalTypeFields(kvs.Fields(), append(path, kvs.Name()))
 			sf.Type = reflect.MapOf(mapfields[0].Type, mapfields[1].Type)
-		case lt.Date != nil:
+		case *format.DateType:
 			sf.Type = reflect.TypeFor[Date]()
-		case lt.Time != nil:
-			switch {
-			case lt.Time.Unit.Millis != nil:
-				if lt.Time.IsAdjustedToUTC {
+		case *format.TimeType:
+			switch lt.Unit.Value.(type) {
+			case *format.MilliSeconds:
+				if lt.IsAdjustedToUTC {
 					sf.Type = reflect.TypeFor[TimeMilliUTC]()
 				} else {
 					sf.Type = reflect.TypeFor[TimeMilliLoc]()
 				}
-			case lt.Time.Unit.Micros != nil:
-				if lt.Time.IsAdjustedToUTC {
+			case *format.MicroSeconds:
+				if lt.IsAdjustedToUTC {
 					sf.Type = reflect.TypeFor[TimeMicroUTC]()
 				} else {
 					sf.Type = reflect.TypeFor[TimeMicroLoc]()
 				}
-			case lt.Time.Unit.Nanos != nil:
-				if lt.Time.IsAdjustedToUTC {
+			case *format.NanoSeconds:
+				if lt.IsAdjustedToUTC {
 					sf.Type = reflect.TypeFor[TimeNanoUTC]()
 				} else {
 					sf.Type = reflect.TypeFor[TimeNanoLoc]()
 				}
 			}
-		case lt.Timestamp != nil:
-			switch {
-			case lt.Timestamp.Unit.Millis != nil:
-				if lt.Timestamp.IsAdjustedToUTC {
+		case *format.TimestampType:
+			switch lt.Unit.Value.(type) {
+			case *format.MilliSeconds:
+				if lt.IsAdjustedToUTC {
 					sf.Type = reflect.TypeFor[StampMilliUTC]()
 				} else {
 					sf.Type = reflect.TypeFor[StampMilliLoc]()
 				}
-			case lt.Timestamp.Unit.Micros != nil:
-				if lt.Timestamp.IsAdjustedToUTC {
+			case *format.MicroSeconds:
+				if lt.IsAdjustedToUTC {
 					sf.Type = reflect.TypeFor[StampMicroUTC]()
 				} else {
 					sf.Type = reflect.TypeFor[StampMicroLoc]()
 				}
-			case lt.Timestamp.Unit.Nanos != nil:
-				if lt.Timestamp.IsAdjustedToUTC {
+			case *format.NanoSeconds:
+				if lt.IsAdjustedToUTC {
 					sf.Type = reflect.TypeFor[StampNanoUTC]()
 				} else {
 					sf.Type = reflect.TypeFor[StampNanoLoc]()
