@@ -14,65 +14,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  run-tests:
-    name: "Run Tests"
-    runs-on: ubuntu-latest
-
+  test:
     strategy:
       fail-fast: false
       matrix:
-        go-version:
-          - stable
-          #- oldstable
+        go: [ 'stable' ]
+    uses: mutility/ci/.github/workflows/go-test.yaml@main
+    with:
+      show-coverage: file
+      go-version: ${{ matrix.go }}
+      golangci-lint-config: .github/golangci.yml
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ matrix.go-version }}
-
-      - name: Gofmt
-        run: gofmt -s -w . && git diff --exit-code
-
-      - name: Go Vet
-        run: go vet ./...
-
-      - name: Go Tidy
-        run: go mod tidy && git diff --exit-code
-
-      - name: Go Mod
-        run: go mod download
-
-      - name: Go Mod Verify
-        run: go mod verify
-
-      - name: Go Generate
-        run: go generate ./... && git diff --exit-code
-
-      - name: Go Build
-        run: go build -o /dev/null ./...
-
-      - name: Go Test
-        run: go test -v -count=1 -shuffle=on -coverprofile=coverage.txt ./...
-
-      - id: coverpkg
-        name: Calculate Coverage
-        uses: mutility/coverpkg@v1
-        with:
-          token: ${{ github.token }}
-          groupby: file
-          comment: replace
-
-      - name: Go Benchmark
-        run: go test -v -shuffle=on -run=- -bench=. -benchtime=1x -benchmem ./...
-
-      - name: Go Vulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest -test ./...
-
-      - name: Lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          args: --config=.github/golangci.yml
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        go: [ 'stable' ]
+    permissions:
+      contents: write
+      pull-requests: write
+    needs: test
+    if: always() && (needs.test.result == 'success')
+    uses: mutility/ci/.github/workflows/go-test-publish.yaml@main
+    with:
+      go-version: ${{ matrix.go }}
+      pr-comment: 'replace'
