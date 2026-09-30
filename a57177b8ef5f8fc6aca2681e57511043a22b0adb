@@ -1,0 +1,15 @@
+all:
+mutility/parquetry 575 477
+mod:
+github.com/mutility/parquetry 575 477
+root:
+github.com/mutility/parquetry 575 477
+pkg:
+github.com/mutility/parquetry 575 477
+file:
+github.com/mutility/parquetry/write_csv.go 29 25
+github.com/mutility/parquetry/main.go 329 295
+github.com/mutility/parquetry/write_json.go 20 16
+github.com/mutility/parquetry/reshape.go 82 68
+github.com/mutility/parquetry/filter.go 29 23
+github.com/mutility/parquetry/types.go 86 50
