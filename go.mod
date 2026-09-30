@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/alecthomas/participle/v2 v2.1.4
-	github.com/dustin/go-humanize v1.0.1
+	github.com/dustin/go-humanize v1.1.0
 	github.com/expr-lang/expr v1.17.8
 	github.com/mutility/cli v0.0.0-20240522180618-9cd49fd46400
 	github.com/parquet-go/parquet-go v0.32.0
